@@ -1,7 +1,24 @@
 use std::collections::{HashMap, HashSet};
 use std::fs::OpenOptions;
 use std::io::{self, Write};
+use eframe::egui::scroll_area::State;
 use serde::Deserialize;
+use eframe::egui;
+use std::sync::{Arc, Mutex};
+use std::thread;
+
+struct DisplayData {
+    players: Vec<Player>,
+    statuses: HashMap<PlayerId, PlayerStatus>,
+    problems: Vec<Question>,
+}
+
+// GUIと共有するためのデータ
+struct SharedQuizState {
+    players: Vec<Player>,
+    statuses: HashMap<PlayerId, PlayerStatus>,
+    current_question: u32,
+}
 
 // --- プレイヤーの情報 ---
 type PlayerId = usize;
@@ -15,6 +32,7 @@ struct Player {
 }
 
 // --- 問題の情報(仮) ---
+#[derive(Clone)]
 struct Question {
     id: usize,
     text: String,
@@ -285,7 +303,7 @@ fn read_line() -> String {
     s.trim().to_string()
 }
 
-fn main() {
+fn main() -> eframe::Result<()> {
     let players = load_players("data/players.csv");
     let questions = load_questions("data/questions.csv");
     // println!("Players:");
@@ -297,7 +315,49 @@ fn main() {
     //     println!("{}: {} ({})", q.id, q.text, q.answer);
     // }
 
-    let rule = FreeBatting;
+    // 共有状態の作成
+    let mut initial_statuses = HashMap::new();
+    for p in &players {
+        initial_statuses.insert(p.id, PlayerStatus {
+            score: 0,
+            correct_count: 0,
+            wrong_count: 0,
+            frozen_until: None,
+            is_winner: false,
+            is_eliminated: false,
+        });
+    }
+
+    let shared_state = Arc::new(Mutex::new(SharedQuizState {
+        players: players.clone(),
+        statuses: initial_statuses,
+        current_question: 1,
+    }));
+    // 2. 【サブスレッド】ターミナル操作ロジック
+    let state_for_thread = Arc::clone(&shared_state);
+    thread::spawn(move || {
+        // ここに元の main() のループ処理を移植
+        run_terminal_loop(state_for_thread, players, questions);
+    });
+
+    // 3. 【メインスレッド】GUI起動 (ここでブロックされる)
+    let native_options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default().with_inner_size([1000.0, 600.0]),
+        ..Default::default()
+    };
+    eframe::run_native(
+        "Quiz Scoreboard Display",
+        native_options,
+        Box::new(|_cc| Box::new(ScoreboardApp { state: shared_state })),
+    )
+}
+
+fn run_terminal_loop(
+    state: Arc<Mutex<SharedQuizState>>,
+    players: Vec<Player>,
+    questions: Vec<Question>,
+) {
+    let rule = NCorrectMWrong{ n: 7, m: 3 };
     let question_num = questions.len();
 
     let mut player_statuses: HashMap<PlayerId, PlayerStatus> = HashMap::new();
@@ -312,6 +372,10 @@ fn main() {
     write_log_head("data/log.csv", players.clone()).expect("ログの書き込みに失敗");
 
     for q in 1..=question_num {
+        // 表示スレッドへ現在の問題番号を通知
+        {
+            state.lock().unwrap().current_question = q as u32;
+        }
         // 勝ち抜け、脱落、凍結されていないプレイヤーがいなければ終了
         let active_players: Vec<&Player> = players.iter().filter(|p| {
             let status = player_statuses.get(&p.id);
@@ -330,6 +394,9 @@ fn main() {
         println!("\n=== Question {} ===", q);
         println!("Question: {}", questions[q-1].text);
         println!("");
+
+        let mut question_status = QuestionStatus::new();
+        let mut player_events: HashMap<PlayerId, Vec<Event>> = HashMap::new();
 
         loop {
             print!("event> ");
@@ -438,6 +505,72 @@ fn main() {
                 player_statuses.get(&p.id).map(|s| s.wrong_count).unwrap_or(0)
             );
         }
+        {
+            let mut data = state.lock().unwrap();
+            // ここで rule.apply を呼ぶか、個別に status を更新する
+            // 例: 暫定的に status を更新して GUI に即時反映させる
+            rule.apply(&mut data.statuses, &mut player_events, &mut question_status);
+        }
         write_log_line("data/log.csv", q, players.clone(), player_events).expect("ログの書き込みに失敗");
+    }
+}
+
+// --- GUI アプリケーション構造体 ---
+struct ScoreboardApp {
+    state: Arc<Mutex<SharedQuizState>>,
+}
+
+impl eframe::App for ScoreboardApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let data = self.state.lock().unwrap();
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading(format!("Question #{}", data.current_question));
+            ui.add_space(10.0);
+
+            egui::ScrollArea::horizontal().show(ui, |ui| {
+                egui::Grid::new("score_grid").striped(true).spacing([15.0, 8.0]).show(ui, |ui| {
+                    // CSVヘッダ相当
+                    ui.label("ID");
+                    for p in &data.players { ui.label(p.id.to_string()); }
+                    ui.end_row();
+
+                    ui.label("Name");
+                    for p in &data.players { ui.label(&p.name); }
+                    ui.end_row();
+
+                    ui.label("Affiliation");
+                    for p in &data.players { ui.label(p.affiliation.as_deref().unwrap_or("-")); }
+                    ui.end_row();
+
+                    ui.label("Grade");
+                    for p in &data.players { ui.label(p.grade.as_deref().unwrap_or("-")); }
+                    ui.end_row();
+
+                    ui.end_row(); ui.separator(); for _ in &data.players { ui.separator(); } ui.end_row();
+
+                    // 現在の得点状況
+                    ui.label(egui::RichText::new("SCORE").strong().color(egui::Color32::LIGHT_BLUE));
+                    for p in &data.players {
+                        let s = &data.statuses[&p.id];
+                        ui.label(egui::RichText::new(s.score.to_string()).size(20.0).strong());
+                    }
+                    ui.end_row();
+
+                    ui.label("Correct (○)");
+                    for p in &data.players {
+                        ui.label(egui::RichText::new(data.statuses[&p.id].correct_count.to_string()).color(egui::Color32::GREEN));
+                    }
+                    ui.end_row();
+
+                    ui.label("Wrong (×)");
+                    for p in &data.players {
+                        ui.label(egui::RichText::new(data.statuses[&p.id].wrong_count.to_string()).color(egui::Color32::RED));
+                    }
+                    ui.end_row();
+                });
+            });
+        });
+        ctx.request_repaint(); // 常に最新の状態を描画
     }
 }
