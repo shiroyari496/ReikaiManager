@@ -147,6 +147,7 @@ enum Event {
     Buzz(u32), // 解答権を獲得した順番
     Correct,
     Wrong,
+    Set(u32),
 }
 
 // --- ラウンド中の各プレイヤーの状態 ---
@@ -222,6 +223,7 @@ impl QuizRule for FreeBatting {
                     Event::Wrong => {
                         wrong_count += 1
                     },
+                    _ => {},
                 }
             }
             let status = player_statuses.entry(*player_id).or_insert_with(PlayerStatus::new);
@@ -264,6 +266,7 @@ impl QuizRule for NCorrectMWrong {
                     Event::Wrong => {
                         wrong_count += 1
                     },
+                    _ => {},
                 }
             }
             let status = player_statuses.entry(*player_id).or_insert_with(PlayerStatus::new);
@@ -377,7 +380,8 @@ fn run_terminal_loop(
     players: Vec<Player>,
     questions: Vec<Question>,
 ) {
-    let rule = NCorrectMWrong{ n: 7, m: 3 };
+    // let rule = NCorrectMWrong{ n: 7, m: 3 };
+    let rule = FreeBatting;
     let question_num = questions.len();
 
     let mut player_statuses: HashMap<PlayerId, PlayerStatus> = HashMap::new();
@@ -438,6 +442,54 @@ fn run_terminal_loop(
             }    
 
             let parts: Vec<&str> = input.split_whitespace().collect();
+            if parts.len() == 3 && parts[0] == "set" {
+                let id = match parts[1].parse::<PlayerId>() {
+                    Ok(id) => id,
+                    Err(_) => {
+                        println!("invalid player id");
+                        println!("Players:");
+                        for p in &players {
+                            println!("{}: {}", p.id, p.name);
+                        }
+                        continue;
+                    }
+                };
+                // プレイヤーの存在確認
+                if let Some(player) = players.iter().find(|p| p.id == id) {
+                    let new_score: i32 = parts[2].parse().unwrap_or(0);
+                    
+                    // 1. ローカルの状態を更新
+                    let status = player_statuses.entry(player.id).or_insert_with(PlayerStatus::new);
+                    status.score = new_score;
+                    player_events.entry(player.id).or_insert_with(Vec::new).push(Event::Set(new_score as u32));
+
+                    // 2. ★ここで即座に GUI 側の共有状態も更新する★
+                    {
+                        let mut data = state.lock().unwrap();
+                        if let Some(shared_status) = data.statuses.get_mut(&player.id) {
+                            shared_status.score = new_score;
+                        }
+                    }
+                    println!("Player {} score set to {}", player.name, new_score);
+                } else {
+                    println!("unknown player");
+                }
+                // let player = match players.iter().find(|p| p.id == id) {
+                //     Some(p) => p.id,
+                //     None => {
+                //         println!("unknown player");
+                //         println!("Players:");
+                //         for p in &players {
+                //             println!("{}: {}", p.id, p.name);
+                //         }
+                //         continue;
+                //     }
+                // };
+                // let status = &mut player_statuses.entry(player).or_insert_with(PlayerStatus::new);
+                // status.score = parts[2].parse().unwrap();
+                // player_events.entry(player).or_insert_with(Vec::new).push(Event::Set(parts[2].parse().unwrap()));
+                continue;
+            }
             if parts.len() != 2 {
                 println!("format: buzz A / correct A / wrong A / pass / next");
                 continue;
