@@ -348,8 +348,28 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Quiz Scoreboard Display",
         native_options,
-        Box::new(|_cc| Box::new(ScoreboardApp { state: shared_state })),
+        Box::new(|cc| {
+            setup_custom_fonts(&cc.egui_ctx);
+            Box::new(ScoreboardApp { state: shared_state })
+        }),
     )
+}
+
+fn setup_custom_fonts(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+
+    fonts.font_data.insert(
+        "my_font".to_owned(),
+        egui::FontData::from_static(include_bytes!("../assets/fonts/Noto_Sans_JP/NotoSansJP-VariableFont_wght.ttf")), // パスは環境に合わせてください
+    );
+
+    // フォントの優先順位を設定（Proportional: 文章用, Monospace: 等幅）
+    fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap()
+        .insert(0, "my_font".to_owned());
+    fonts.families.get_mut(&egui::FontFamily::Monospace).unwrap()
+        .insert(0, "my_font".to_owned());
+
+    ctx.set_fonts(fonts);
 }
 
 fn run_terminal_loop(
