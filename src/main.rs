@@ -597,18 +597,27 @@ impl eframe::App for ScoreboardApp {
         let data = self.state.lock().unwrap();
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading(format!("Question #{}", data.current_question));
-            ui.add_space(10.0);
+            ui.heading(egui::RichText::new(format!("Question #{}", data.current_question)).size(40.0));
+            ui.add_space(20.0);
 
             egui::ScrollArea::horizontal().show(ui, |ui| {
-                egui::Grid::new("score_grid").striped(true).spacing([15.0, 8.0]).show(ui, |ui| {
+                egui::Grid::new("score_grid").striped(true).spacing([30.0, 20.0]).show(ui, |ui| {
+                    let header_size = 24.0;
+                    let body_size = 30.0;
+                    let score_size = 60.0; // スコアは特に大きく
                     // CSVヘッダ相当
-                    ui.label("ID");
-                    for p in &data.players { ui.label(p.id.to_string()); }
+                    // --- ID 行 ---
+                    ui.label(egui::RichText::new("ID").size(header_size/2.0));
+                    for p in &data.players {
+                        ui.label(egui::RichText::new(p.id.to_string()).size(header_size));
+                    }
                     ui.end_row();
 
-                    ui.label("Name");
-                    for p in &data.players { ui.label(&p.name); }
+                    // --- Name 行 ---
+                    ui.label(egui::RichText::new("Name").size(header_size));
+                    for p in &data.players {
+                        ui.label(egui::RichText::new(&p.name).size(body_size).strong());
+                    }
                     ui.end_row();
 
                     ui.label("Affiliation");
@@ -621,11 +630,11 @@ impl eframe::App for ScoreboardApp {
 
                     ui.end_row(); ui.separator(); for _ in &data.players { ui.separator(); } ui.end_row();
 
-                    // 現在の得点状況
-                    ui.label(egui::RichText::new("SCORE").strong().color(egui::Color32::LIGHT_BLUE));
+                    // --- SCORE 行 (ここを最大に) ---
+                    ui.label(egui::RichText::new("SCORE").strong().size(header_size).color(egui::Color32::LIGHT_BLUE));
                     for p in &data.players {
                         let s = &data.statuses[&p.id];
-                        ui.label(egui::RichText::new(s.score.to_string()).size(20.0).strong());
+                        ui.label(egui::RichText::new(s.score.to_string()).size(score_size).strong());
                     }
                     ui.end_row();
 
