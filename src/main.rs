@@ -7,6 +7,7 @@ use eframe::egui;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::collections::HashMap;
+use std::time::Instant;
 
 use crate::data::{Player, Question, PlayerStatus, QuestionStatus, Event, SharedQuizState, PlayerId};
 use crate::loader::{load_players, load_questions, write_log_head, write_log_line};
@@ -37,12 +38,15 @@ fn main() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default().with_inner_size([1000.0, 600.0]),
         ..Default::default()
     };
+
+    let shared_state_for_gui = Arc::clone(&shared_state); // GUI用にクローン
+
     eframe::run_native(
         "Quiz Scoreboard Display",
         native_options,
-        Box::new(|cc| {
-            setup_custom_fonts(&cc.egui_ctx);
-            Box::new(ScoreboardApp { state: shared_state })
+        Box::new(move |cc| {
+            // ScoreboardApp::new に cc と shared_state を渡す
+            Box::new(ScoreboardApp::new(cc, shared_state_for_gui))
         }),
     )
 }
@@ -197,13 +201,148 @@ fn setup_custom_fonts(ctx: &egui::Context) {
 // --- GUI アプリケーション構造体 ---
 struct ScoreboardApp {
     state: Arc<Mutex<SharedQuizState>>,
+    is_3d_mode: bool,
+    // 前回のスコアを保持して変更を検知する
+    last_scores: HashMap<PlayerId, i32>,
+    // 変更があった時刻を保持（アニメーション用）
+    last_change_times: HashMap<PlayerId, Instant>,
 }
 
-impl eframe::App for ScoreboardApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let data = self.state.lock().unwrap();
+impl ScoreboardApp {
+    fn new(cc: &eframe::CreationContext<'_>, state: Arc<Mutex<SharedQuizState>>) -> Self {
+        setup_custom_fonts(&cc.egui_ctx);
+        Self {
+            state,
+            is_3d_mode: false,
+            last_scores: HashMap::new(),
+            last_change_times: HashMap::new(),
+        }
+    }
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+    /// 汎用的な3Dカード描画コンポーネント
+    fn ui_3d_card(
+        &self, 
+        ui: &mut egui::Ui, 
+        text: &str, 
+        size: egui::Vec2, 
+        font_size: f32,
+        change_time: Option<std::time::Instant>
+    ) {
+        // --- アニメーション計算 ---
+        let t = change_time.map_or(0.0, |inst| {
+            let elapsed = inst.elapsed().as_secs_f32();
+            let duration = 0.6; // 回転スピード
+            if elapsed < duration {
+                (1.0 - (elapsed / duration * std::f32::consts::PI).cos()) / 2.0
+            } else { 0.0 }
+        });
+
+        let angle = t * std::f32::consts::PI;
+        let cos_a = angle.cos();
+        let sin_a = angle.sin();
+
+        // 描画領域の確保
+        let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+        let painter = ui.painter();
+        let center = rect.center();
+        let hw = size.x / 2.0 * cos_a.abs(); // 回転による幅の圧縮
+        let hh = size.y / 2.0;
+        let thickness = 6.0 * sin_a.abs(); // 回転中だけ厚みが見える演出
+
+        // --- 頂点定義 ---
+        let top = center.y - hh;
+        let bottom = center.y + hh;
+        let left = center.x - hw;
+        let right = center.x + hw;
+        let off = if cos_a > 0.0 { thickness } else { -thickness };
+
+        // 側面（厚み）
+        painter.add(egui::Shape::convex_polygon(
+            vec![
+                egui::pos2(right, top),
+                egui::pos2(right + off, top),
+                egui::pos2(right + off, bottom),
+                egui::pos2(right, bottom),
+            ],
+            egui::Color32::from_rgb(40, 40, 50),
+            egui::Stroke::NONE,
+        ));
+
+        // 表面
+        painter.add(egui::Shape::convex_polygon(
+            vec![
+                egui::pos2(left, top),
+                egui::pos2(right, top),
+                egui::pos2(right, bottom),
+                egui::pos2(left, bottom),
+            ],
+            egui::Color32::from_rgb(60, 60, 70),
+            egui::Stroke::new(1.0, egui::Color32::GRAY),
+        ));
+
+        // 文字（反転中は表示しない）
+        if cos_a.abs() > 0.4 {
+            painter.text(
+                center,
+                egui::Align2::CENTER_CENTER,
+                text,
+                egui::FontId::proportional(font_size * cos_a.abs()),
+                egui::Color32::WHITE,
+            );
+        }
+    }
+
+    /// 擬似3Dの「厚みのある板」を描画する関数
+    fn draw_3d_card(&self, ui: &mut egui::Ui, text: &str, last_change: Option<Instant>) {
+        let (rect, _response) = ui.allocate_exact_size(egui::vec2(80.0, 100.0), egui::Sense::hover());
+        
+        // アニメーション計算 (0.0 〜 1.0)
+        let t = last_change.map_or(0.0, |inst| {
+            let elapsed = inst.elapsed().as_secs_f32();
+            if elapsed < 1.0 { (1.0 - (elapsed * std::f32::consts::PI).cos()) / 2.0 } else { 0.0 }
+        });
+
+        // 回転角 (t=0で0度, 変化時に360度回転)
+        let angle = t * std::f32::consts::TAU; 
+        let painter = ui.painter();
+        
+        let center = rect.center();
+        let width = rect.width() * 0.45 * angle.cos().abs(); // 回転による幅の変化
+        let thickness = 5.0; // 板の厚み
+
+        // 板の裏表や厚みの描画（簡易的なポリゴン描画）
+        let color = egui::Color32::from_rgb(60, 60, 70);
+        let side_color = egui::Color32::from_rgb(40, 40, 50);
+
+        // 厚みの部分
+        painter.rect_filled(
+            egui::Rect::from_center_size(center + egui::vec2(thickness * 0.5, 2.0), egui::vec2(width, rect.height())),
+            2.0,
+            side_color
+        );
+
+        // 表面の板
+        painter.rect_filled(
+            egui::Rect::from_center_size(center, egui::vec2(width, rect.height())),
+            2.0,
+            color
+        );
+
+        // 文字の描画（幅が狭いときは表示しない、または反転させる）
+        if angle.cos() > 0.0 {
+            painter.text(
+                center,
+                egui::Align2::CENTER_CENTER,
+                text,
+                egui::FontId::proportional(40.0 * angle.cos().abs().max(0.1)),
+                egui::Color32::WHITE,
+            );
+        }
+    }
+
+    fn render_classic_grid(&mut self, ui: &mut egui::Ui, players: &[Player], statuses: &HashMap<PlayerId, PlayerStatus>) {
+        let data = self.state.lock().unwrap();
+        {
             ui.heading(egui::RichText::new(format!("Question #{}", data.current_question)).size(40.0));
             ui.add_space(20.0);
 
@@ -281,7 +420,63 @@ impl eframe::App for ScoreboardApp {
                         ui.end_row();
                     });
             });
+        };
+    }
+}
+
+impl eframe::App for ScoreboardApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // 1. 先にロックを取得して、必要なデータをローカルに持ってくる
+        // self 全体をクロージャに持ち込ませないための工夫です
+        let (current_question, players, statuses) = {
+            let data = self.state.lock().unwrap();
+            (data.current_question, data.players.clone(), data.statuses.clone())
+        };
+
+        // 2. スコア変更の検知とアニメーション更新
+        // (self を直接操作するので、ここもクロージャの外で行う)
+        for p in &players {
+            let current_score = statuses[&p.id].score;
+            let last_score = self.last_scores.entry(p.id).or_insert(current_score);
+            if *last_score != current_score {
+                self.last_change_times.insert(p.id, std::time::Instant::now());
+                *last_score = current_score;
+            }
+        }
+
+        // 3. UIの描画
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.heading(format!("Question #{}", current_question));
+                ui.separator();
+                ui.checkbox(&mut self.is_3d_mode, "3D Mode");
+            });
+
+            ui.add_space(20.0);
+
+            if self.is_3d_mode {
+                egui::Grid::new("3d_grid").spacing([20.0, 20.0]).show(ui, |ui| {
+                    // ラベル列
+                    ui.label("Name");
+                    for p in &players {
+                        self.ui_3d_card(ui, &p.name, egui::vec2(120.0, 40.0), 20.0, None);
+                    }
+                    ui.end_row();
+
+                    ui.label("Score");
+                    for p in &players {
+                        let score_str = statuses[&p.id].score.to_string();
+                        let change = self.last_change_times.get(&p.id).cloned();
+                        self.ui_3d_card(ui, &score_str, egui::vec2(80.0, 60.0), 30.0, change);
+                    }
+                    ui.end_row();
+                });
+            } else {
+                // 従来の2D表示 (引数にコピーしたデータを渡す)
+                self.render_classic_grid(ui, &players, &statuses);
+            }
         });
+
         ctx.request_repaint();
     }
 }
