@@ -376,6 +376,14 @@ impl ScoreboardApp {
 
 impl eframe::App for ScoreboardApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // F11 キーで全画面の切り替え
+        if ctx.input(|i| i.key_pressed(egui::Key::F11)) {
+            let is_fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+
+            // メインウィンドウ（表示側）の表示モードを切り替え
+            ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!is_fullscreen));
+        }
+
         // 1. 共有データの取得
         let (current_question, questions, players, display_statuses) = {
             let data = self.state.lock().unwrap();
