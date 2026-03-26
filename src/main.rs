@@ -5,7 +5,7 @@ mod terminal;
 
 use eframe::egui;
 use std::sync::{Arc, Mutex};
-use std::thread;
+// use std::thread;
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -25,13 +25,13 @@ fn main() -> eframe::Result<()> {
     // 共有状態の作成
     let shared_state = Arc::new(Mutex::new(SharedQuizState::new(players.clone())));
 
-    // 【サブスレッド】ターミナル操作ロジック
-    let state_for_thread = Arc::clone(&shared_state);
-    thread::spawn(move || {
-        if let Err(e) = run_terminal_loop(state_for_thread, players, questions) {
-            eprintln!("Error in terminal loop: {}", e);
-        }
-    });
+    // // 【サブスレッド】ターミナル操作ロジック
+    // let state_for_thread = Arc::clone(&shared_state);
+    // thread::spawn(move || {
+    //     if let Err(e) = run_terminal_loop(state_for_thread, players, questions) {
+    //         eprintln!("Error in terminal loop: {}", e);
+    //     }
+    // });
 
     // 【メインスレッド】GUI起動
     let native_options = eframe::NativeOptions {
@@ -162,7 +162,7 @@ fn run_terminal_loop(
         {
             let mut data = state.lock().unwrap();
             for (player_id, status) in &player_statuses {
-                if let Some(shared_status) = data.statuses.get_mut(player_id) {
+                if let Some(shared_status) = data.display_statuses.get_mut(player_id) {
                     *shared_status = status.clone();
                 }
             }
@@ -292,151 +292,91 @@ impl ScoreboardApp {
         }
     }
 
-    /// 擬似3Dの「厚みのある板」を描画する関数
-    fn draw_3d_card(&self, ui: &mut egui::Ui, text: &str, last_change: Option<Instant>) {
-        let (rect, _response) = ui.allocate_exact_size(egui::vec2(80.0, 100.0), egui::Sense::hover());
-        
-        // アニメーション計算 (0.0 〜 1.0)
-        let t = last_change.map_or(0.0, |inst| {
-            let elapsed = inst.elapsed().as_secs_f32();
-            if elapsed < 1.0 { (1.0 - (elapsed * std::f32::consts::PI).cos()) / 2.0 } else { 0.0 }
-        });
-
-        // 回転角 (t=0で0度, 変化時に360度回転)
-        let angle = t * std::f32::consts::TAU; 
-        let painter = ui.painter();
-        
-        let center = rect.center();
-        let width = rect.width() * 0.45 * angle.cos().abs(); // 回転による幅の変化
-        let thickness = 5.0; // 板の厚み
-
-        // 板の裏表や厚みの描画（簡易的なポリゴン描画）
-        let color = egui::Color32::from_rgb(60, 60, 70);
-        let side_color = egui::Color32::from_rgb(40, 40, 50);
-
-        // 厚みの部分
-        painter.rect_filled(
-            egui::Rect::from_center_size(center + egui::vec2(thickness * 0.5, 2.0), egui::vec2(width, rect.height())),
-            2.0,
-            side_color
-        );
-
-        // 表面の板
-        painter.rect_filled(
-            egui::Rect::from_center_size(center, egui::vec2(width, rect.height())),
-            2.0,
-            color
-        );
-
-        // 文字の描画（幅が狭いときは表示しない、または反転させる）
-        if angle.cos() > 0.0 {
-            painter.text(
-                center,
-                egui::Align2::CENTER_CENTER,
-                text,
-                egui::FontId::proportional(40.0 * angle.cos().abs().max(0.1)),
-                egui::Color32::WHITE,
-            );
-        }
-    }
-
     fn render_classic_grid(&mut self, ui: &mut egui::Ui, players: &[Player], statuses: &HashMap<PlayerId, PlayerStatus>) {
-        let data = self.state.lock().unwrap();
-        {
-            ui.heading(egui::RichText::new(format!("Question #{}", data.current_question)).size(40.0));
-            ui.add_space(20.0);
+        ui.heading(egui::RichText::new(format!("Question #{}", self.state.lock().unwrap().current_question)).size(40.0));
+        ui.add_space(20.0);
 
-            egui::ScrollArea::horizontal().show(ui, |ui| {
-                egui::Grid::new("score_grid")
-                    .striped(true)
-                    .spacing([30.0, 20.0])
-                    .show(ui, |ui| {
-                        let header_size = 24.0;
-                        let body_size = 30.0;
-                        let score_size = 60.0;
+        egui::ScrollArea::horizontal().show(ui, |ui| {
+            egui::Grid::new("score_grid")
+                .striped(true)
+                .spacing([30.0, 20.0])
+                .show(ui, |ui| {
+                    let header_size = 24.0;
+                    let body_size = 30.0;
+                    let score_size = 60.0;
 
-                        // --- ID 行 ---
-                        ui.label(egui::RichText::new("ID").size(header_size / 2.0));
-                        for p in &data.players {
-                            ui.label(egui::RichText::new(p.id.to_string()).size(header_size));
-                        }
-                        ui.end_row();
+                    // --- Name 行 ---
+                    ui.label(egui::RichText::new("Name").size(header_size));
+                    for p in players {
+                        ui.label(egui::RichText::new(&p.name).size(body_size).strong());
+                    }
+                    ui.end_row();
 
-                        // --- Name 行 ---
-                        ui.label(egui::RichText::new("Name").size(header_size));
-                        for p in &data.players {
-                            ui.label(egui::RichText::new(&p.name).size(body_size).strong());
-                        }
-                        ui.end_row();
+                    ui.label("Affiliation");
+                    for p in players {
+                        ui.label(p.affiliation.as_deref().unwrap_or("-"));
+                    }
+                    ui.end_row();
 
-                        ui.label("Affiliation");
-                        for p in &data.players {
-                            ui.label(p.affiliation.as_deref().unwrap_or("-"));
-                        }
-                        ui.end_row();
+                    ui.label("Grade");
+                    for p in players {
+                        ui.label(p.grade.as_deref().unwrap_or("-"));
+                    }
+                    ui.end_row();
 
-                        ui.label("Grade");
-                        for p in &data.players {
-                            ui.label(p.grade.as_deref().unwrap_or("-"));
-                        }
-                        ui.end_row();
-
-                        ui.end_row();
+                    ui.end_row();
+                    ui.separator();
+                    for _ in players {
                         ui.separator();
-                        for _ in &data.players {
-                            ui.separator();
-                        }
-                        ui.end_row();
+                    }
+                    ui.end_row();
 
-                        // --- SCORE 行 ---
+                    // --- SCORE 行 ---
+                    ui.label(
+                        egui::RichText::new("SCORE")
+                            .strong()
+                            .size(header_size)
+                            .color(egui::Color32::LIGHT_BLUE),
+                    );
+                    for p in players {
+                        let s = &statuses[&p.id];
+                        ui.label(egui::RichText::new(s.score.to_string()).size(score_size).strong());
+                    }
+                    ui.end_row();
+
+                    ui.label("Correct (○)");
+                    for p in players {
                         ui.label(
-                            egui::RichText::new("SCORE")
-                                .strong()
-                                .size(header_size)
-                                .color(egui::Color32::LIGHT_BLUE),
+                            egui::RichText::new(statuses[&p.id].correct_count.to_string())
+                                .color(egui::Color32::GREEN),
                         );
-                        for p in &data.players {
-                            let s = &data.statuses[&p.id];
-                            ui.label(egui::RichText::new(s.score.to_string()).size(score_size).strong());
-                        }
-                        ui.end_row();
+                    }
+                    ui.end_row();
 
-                        ui.label("Correct (○)");
-                        for p in &data.players {
-                            ui.label(
-                                egui::RichText::new(data.statuses[&p.id].correct_count.to_string())
-                                    .color(egui::Color32::GREEN),
-                            );
-                        }
-                        ui.end_row();
-
-                        ui.label("Wrong (×)");
-                        for p in &data.players {
-                            ui.label(
-                                egui::RichText::new(data.statuses[&p.id].wrong_count.to_string())
-                                    .color(egui::Color32::RED),
-                            );
-                        }
-                        ui.end_row();
-                    });
-            });
-        };
+                    ui.label("Wrong (×)");
+                    for p in players {
+                        ui.label(
+                            egui::RichText::new(statuses[&p.id].wrong_count.to_string())
+                                .color(egui::Color32::RED),
+                        );
+                    }
+                    ui.end_row();
+                });
+        });
     }
 }
 
 impl eframe::App for ScoreboardApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // 1. 先にロックを取得して、必要なデータをローカルに持ってくる
-        // self 全体をクロージャに持ち込ませないための工夫です
-        let (current_question, players, statuses) = {
-            let data = self.state.lock().unwrap();
-            (data.current_question, data.players.clone(), data.statuses.clone())
+        // 1. 共有データの取得
+        let (current_question, players, display_statuses) = {
+            let mut data = self.state.lock().unwrap();
+            (data.current_question, data.players.clone(), data.display_statuses.clone())
         };
 
         // 2. スコア変更の検知とアニメーション更新
-        // (self を直接操作するので、ここもクロージャの外で行う)
         for p in &players {
-            let current_score = statuses[&p.id].score;
+            let current_score = display_statuses[&p.id].score;
             let last_score = self.last_scores.entry(p.id).or_insert(current_score);
             if *last_score != current_score {
                 self.last_change_times.insert(p.id, std::time::Instant::now());
@@ -444,7 +384,7 @@ impl eframe::App for ScoreboardApp {
             }
         }
 
-        // 3. UIの描画
+        // 3. メインUIの描画
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.heading(format!("Question #{}", current_question));
@@ -456,7 +396,6 @@ impl eframe::App for ScoreboardApp {
 
             if self.is_3d_mode {
                 egui::Grid::new("3d_grid").spacing([20.0, 20.0]).show(ui, |ui| {
-                    // ラベル列
                     ui.label("Name");
                     for p in &players {
                         self.ui_3d_card(ui, &p.name, egui::vec2(120.0, 40.0), 20.0, None);
@@ -465,17 +404,83 @@ impl eframe::App for ScoreboardApp {
 
                     ui.label("Score");
                     for p in &players {
-                        let score_str = statuses[&p.id].score.to_string();
+                        let score_str = display_statuses[&p.id].score.to_string();
                         let change = self.last_change_times.get(&p.id).cloned();
                         self.ui_3d_card(ui, &score_str, egui::vec2(80.0, 60.0), 30.0, change);
                     }
                     ui.end_row();
                 });
             } else {
-                // 従来の2D表示 (引数にコピーしたデータを渡す)
-                self.render_classic_grid(ui, &players, &statuses);
+                self.render_classic_grid(ui, &players, &display_statuses);
             }
         });
+
+        // 4. コントロールパネル（別ウィンドウ）
+        ctx.show_viewport_immediate(
+            egui::ViewportId::from_hash_of("control_panel"),
+            egui::ViewportBuilder::default()
+                .with_title("Quiz Control Panel")
+                .with_inner_size([500.0, 600.0]),
+            |ctx, class| {
+                assert!(
+                    class == egui::ViewportClass::Immediate,
+                    "This platform doesn't support secondary viewports"
+                );
+
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let mut data = self.state.lock().unwrap();
+                    ui.heading("Controller");
+                    ui.separator();
+
+                    // 問題進行
+                    ui.horizontal(|ui| {
+                        if ui.button("Next Question").clicked() {
+                            data.display_statuses = data.working_statuses.clone();
+                            data.current_question += 1;
+                        }
+                    });
+
+                    ui.separator();
+
+                    // 簡易回答操作
+                    let player_info: Vec<(PlayerId, String)> = data.players.iter()
+                        .map(|p| (p.id, p.name.clone()))
+                        .collect();
+
+                    for (pid, name) in &player_info {
+                        ui.horizontal(|ui| {
+                            ui.label(format!("{}: {}", pid, name));
+                            if ui.button(egui::RichText::new("Correct").color(egui::Color32::GREEN)).clicked() {
+                                if let Some(status) = data.working_statuses.get_mut(pid) {
+                                    status.score += 1;
+                                    status.correct_count += 1;
+                                }
+                            }
+                            if ui.button(egui::RichText::new("Wrong").color(egui::Color32::RED)).clicked() {
+                                if let Some(status) = data.working_statuses.get_mut(pid) {
+                                    status.wrong_count += 1;
+                                }
+                            }
+                        });
+                    }
+
+                    ui.separator();
+                    ui.label("Player Status Edit (Drag to adjust)");
+                    egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
+                        egui::Grid::new("edit_grid").striped(true).show(ui, |ui| {
+                            for (pid, name) in &player_info {
+                                let s = data.working_statuses.get_mut(pid).unwrap();
+                                ui.label(name);
+                                ui.add(egui::DragValue::new(&mut s.score).prefix("Pt:"));
+                                ui.add(egui::DragValue::new(&mut s.correct_count).prefix("○:"));
+                                ui.add(egui::DragValue::new(&mut s.wrong_count).prefix("×:"));
+                                ui.end_row();
+                            }
+                        });
+                    });
+                });
+            },
+        );
 
         ctx.request_repaint();
     }
