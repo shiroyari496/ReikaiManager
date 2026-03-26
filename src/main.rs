@@ -158,7 +158,7 @@ fn run_terminal_loop(
         {
             let mut data = state.lock().unwrap();
             for (player_id, status) in &player_statuses {
-                if let Some(shared_status) = data.statuses.get_mut(player_id) {
+                if let Some(shared_status) = data.display_statuses.get_mut(player_id) {
                     *shared_status = status.clone();
                 }
             }
@@ -257,7 +257,7 @@ impl eframe::App for ScoreboardApp {
                                 .color(egui::Color32::LIGHT_BLUE),
                         );
                         for p in &data.players {
-                            let s = &data.statuses[&p.id];
+                            let s = &data.display_statuses[&p.id];
                             ui.label(egui::RichText::new(s.score.to_string()).size(score_size).strong());
                         }
                         ui.end_row();
@@ -265,7 +265,7 @@ impl eframe::App for ScoreboardApp {
                         ui.label("Correct (○)");
                         for p in &data.players {
                             ui.label(
-                                egui::RichText::new(data.statuses[&p.id].correct_count.to_string())
+                                egui::RichText::new(data.display_statuses[&p.id].correct_count.to_string())
                                     .color(egui::Color32::GREEN),
                             );
                         }
@@ -274,7 +274,7 @@ impl eframe::App for ScoreboardApp {
                         ui.label("Wrong (×)");
                         for p in &data.players {
                             ui.label(
-                                egui::RichText::new(data.statuses[&p.id].wrong_count.to_string())
+                                egui::RichText::new(data.display_statuses[&p.id].wrong_count.to_string())
                                     .color(egui::Color32::RED),
                             );
                         }
@@ -302,6 +302,9 @@ impl eframe::App for ScoreboardApp {
                     // 1. 問題進行
                     ui.horizontal(|ui| {
                         if ui.button("Next Question").clicked() {
+                            // 1. 編集中の状態を表示用にコピー
+                            data.display_statuses = data.working_statuses.clone();
+                            // 2. 問題を進める
                             data.current_question += 1;
                             // data.buzz_queue.clear();
                         }
@@ -339,7 +342,7 @@ impl eframe::App for ScoreboardApp {
                                 .map(|p| (p.id, p.name.clone()))
                                 .collect();
                             for (pid, name) in &player_info {
-                                let mut s = data.statuses.get_mut(&pid).unwrap();
+                                let mut s = data.working_statuses.get_mut(&pid).unwrap();
                                 ui.label(name);
                                 
                                 // スコアや回数の直接修正

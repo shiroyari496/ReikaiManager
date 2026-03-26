@@ -126,19 +126,22 @@ pub enum Event {
 #[derive(Clone, Debug)]
 pub struct SharedQuizState {
     pub players: Vec<Player>,
-    pub statuses: HashMap<PlayerId, PlayerStatus>,
+    pub display_statuses: HashMap<PlayerId, PlayerStatus>,
+    pub working_statuses: HashMap<PlayerId, PlayerStatus>,
     pub current_question: u32,
 }
 
 impl SharedQuizState {
     pub fn new(players: Vec<Player>) -> Self {
-        let mut statuses = HashMap::new();
+        let mut display_statuses = HashMap::new();
         for p in &players {
-            statuses.insert(p.id, PlayerStatus::new());
+            display_statuses.insert(p.id, PlayerStatus::new());
         }
+        let working_statuses = display_statuses.clone();
         Self {
             players,
-            statuses,
+            display_statuses,
+            working_statuses,
             current_question: 1,
         }
     }
