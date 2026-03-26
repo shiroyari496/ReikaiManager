@@ -216,12 +216,12 @@ impl eframe::App for ScoreboardApp {
                         let body_size = 30.0;
                         let score_size = 60.0;
 
-                        // --- ID 行 ---
-                        ui.label(egui::RichText::new("ID").size(header_size / 2.0));
-                        for p in &data.players {
-                            ui.label(egui::RichText::new(p.id.to_string()).size(header_size));
-                        }
-                        ui.end_row();
+                        // // --- ID 行 ---
+                        // ui.label(egui::RichText::new("ID").size(header_size / 2.0));
+                        // for p in &data.players {
+                        //     ui.label(egui::RichText::new(p.id.to_string()).size(header_size));
+                        // }
+                        // ui.end_row();
 
                         // --- Name 行 ---
                         ui.label(egui::RichText::new("Name").size(header_size));
@@ -318,15 +318,29 @@ impl eframe::App for ScoreboardApp {
                     //     ui.label("No one buzzed yet.");
                     // } else
                     {
-                        let mut to_remove = None;
+                        let player_list: Vec<(PlayerId, String)> = data.players.iter()
+                            .map(|p| (p.id, p.name.clone()))
+                            .collect();
+                        // let mut to_remove = None;
                         // for (i, &pid) in data.buzz_queue.iter().enumerate()
-                        for player in data.players.iter()
-                        {
+                        for (pid, name) in player_list {
                             ui.horizontal(|ui| {
-                                ui.label(format!("{}: Player {}", player.id, player.name));
-                                if ui.button("Correct").clicked() { /* handle_correct を呼ぶ */ }
-                                if ui.button("Wrong").clicked() { /* handle_wrong を呼ぶ */ }
-                                if ui.button("Cancel").clicked() { to_remove = Some(player.id); }
+                                ui.label(format!("{}: Player {}", pid, name));
+                                // トグル式にしたい
+                                if ui.button(egui::RichText::new("Correct").color(egui::Color32::GREEN)).clicked() {
+                                    if let Some(status) = data.working_statuses.get_mut(&pid) {
+                                        status.score += 1;
+                                        status.correct_count += 1;
+                                    }
+                                }
+                                // トグル式にしたい
+                                if ui.button(egui::RichText::new("Wrong").color(egui::Color32::RED)).clicked() {
+                                    if let Some(status) = data.working_statuses.get_mut(&pid) {
+                                        // 必要なら減点処理などを追加
+                                        status.wrong_count += 1;
+                                    }
+                                }
+                                // if ui.button("Cancel").clicked() { to_remove = Some(pid); }
                             });
                         }
                         // if let Some(idx) = to_remove { data.buzz_queue.remove(idx); }
@@ -350,12 +364,12 @@ impl eframe::App for ScoreboardApp {
                                 ui.add(egui::DragValue::new(&mut s.correct_count).prefix("○:"));
                                 ui.add(egui::DragValue::new(&mut s.wrong_count).prefix("×:"));
                                 
-                                // 手動でのBuzz登録（シミュレーション用）
-                                if ui.button("Buzz").clicked() {
-                                    // if !data.buzz_queue.contains(&p.id) {
-                                    //     data.buzz_queue.push(p.id);
-                                    // }
-                                }
+                                // 手動でのBuzz登録
+                                // if ui.button("Buzz").clicked() {
+                                //     // if !data.buzz_queue.contains(&p.id) {
+                                //     //     data.buzz_queue.push(p.id);
+                                //     // }
+                                // }
                                 ui.end_row();
                             }
                         });
