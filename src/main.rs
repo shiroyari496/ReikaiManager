@@ -24,13 +24,13 @@ fn main() -> eframe::Result<()> {
     // 共有状態の作成
     let shared_state = Arc::new(Mutex::new(SharedQuizState::new(players.clone())));
 
-    // 【サブスレッド】ターミナル操作ロジック
-    let state_for_thread = Arc::clone(&shared_state);
-    thread::spawn(move || {
-        if let Err(e) = run_terminal_loop(state_for_thread, players, questions) {
-            eprintln!("Error in terminal loop: {}", e);
-        }
-    });
+    // // 【サブスレッド】ターミナル操作ロジック
+    // let state_for_thread = Arc::clone(&shared_state);
+    // thread::spawn(move || {
+    //     if let Err(e) = run_terminal_loop(state_for_thread, players, questions) {
+    //         eprintln!("Error in terminal loop: {}", e);
+    //     }
+    // });
 
     // 【メインスレッド】GUI起動
     let native_options = eframe::NativeOptions {
@@ -201,7 +201,7 @@ struct ScoreboardApp {
 
 impl eframe::App for ScoreboardApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let data = self.state.lock().unwrap();
+        let mut data = self.state.lock().unwrap();
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading(egui::RichText::new(format!("Question #{}", data.current_question)).size(40.0));
@@ -282,6 +282,94 @@ impl eframe::App for ScoreboardApp {
                     });
             });
         });
+
+        // --- コントロール ---
+        ctx.show_viewport_immediate(
+            egui::ViewportId::from_hash_of("control_panel"),
+            egui::ViewportBuilder::default()
+                .with_title("Quiz Control Panel")
+                .with_inner_size([500.0, 600.0]),
+            |ctx, class| {
+                assert!(
+                    class == egui::ViewportClass::Immediate,
+                    "This platform doesn't support secondary viewports"
+                );
+
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.heading("Controller");
+                    ui.separator();
+
+                    // 1. 問題進行
+                    ui.horizontal(|ui| {
+                        if ui.button("Next Question").clicked() {
+                            data.current_question += 1;
+                            // data.buzz_queue.clear();
+                        }
+                    });
+
+                    ui.separator();
+
+                    // 2. 回答権キュー（押し順）
+                    // ui.label(egui::RichText::new("Buzz Queue (Priority)").strong());
+                    // if data.buzz_queue.is_empty() {
+                    //     ui.label("No one buzzed yet.");
+                    // } else
+                    {
+                        let mut to_remove = None;
+                        // for (i, &pid) in data.buzz_queue.iter().enumerate()
+                        for player in data.players.iter()
+                        {
+                            ui.horizontal(|ui| {
+                                ui.label(format!("{}: Player {}", player.id, player.name));
+                                if ui.button("Correct").clicked() { /* handle_correct を呼ぶ */ }
+                                if ui.button("Wrong").clicked() { /* handle_wrong を呼ぶ */ }
+                                if ui.button("Cancel").clicked() { to_remove = Some(player.id); }
+                            });
+                        }
+                        // if let Some(idx) = to_remove { data.buzz_queue.remove(idx); }
+                    }
+
+                    ui.separator();
+
+                    // 3. プレイヤーごとの詳細修正・プレビュー
+                    ui.label("Player Status Edit");
+                    egui::ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
+                        egui::Grid::new("edit_grid").striped(true).show(ui, |ui| {
+                            let player_info: Vec<(PlayerId, String)> = data.players.iter()
+                                .map(|p| (p.id, p.name.clone()))
+                                .collect();
+                            for (pid, name) in &player_info {
+                                let mut s = data.statuses.get_mut(&pid).unwrap();
+                                ui.label(name);
+                                
+                                // スコアや回数の直接修正
+                                ui.add(egui::DragValue::new(&mut s.score).prefix("Pt:"));
+                                ui.add(egui::DragValue::new(&mut s.correct_count).prefix("○:"));
+                                ui.add(egui::DragValue::new(&mut s.wrong_count).prefix("×:"));
+                                
+                                // 手動でのBuzz登録（シミュレーション用）
+                                if ui.button("Buzz").clicked() {
+                                    // if !data.buzz_queue.contains(&p.id) {
+                                    //     data.buzz_queue.push(p.id);
+                                    // }
+                                }
+                                ui.end_row();
+                            }
+                        });
+                    });
+
+                    ui.separator();
+
+                    // 4. 履歴プレビュー
+                    ui.collapsing("Action Logs", |ui| {
+                        // for log in data.logs.iter().rev().take(10) {
+                        //     ui.small(log);
+                        // }
+                    });
+                });
+            },
+        );
+
         ctx.request_repaint();
     }
 }
