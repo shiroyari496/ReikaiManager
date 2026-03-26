@@ -219,19 +219,19 @@ impl ScoreboardApp {
         }
     }
 
-    /// 汎用的な3Dカード描画コンポーネント
+    /// 厚みと縁取りのある3Dカード描画
     fn ui_3d_card(
         &self, 
         ui: &mut egui::Ui, 
         text: &str, 
         size: egui::Vec2, 
         font_size: f32,
+        color: egui::Color32,
         change_time: Option<std::time::Instant>
     ) {
-        // --- アニメーション計算 ---
         let t = change_time.map_or(0.0, |inst| {
             let elapsed = inst.elapsed().as_secs_f32();
-            let duration = 0.6; // 回転スピード
+            let duration = 0.6;
             if elapsed < duration {
                 (1.0 - (elapsed / duration * std::f32::consts::PI).cos()) / 2.0
             } else { 0.0 }
@@ -241,34 +241,42 @@ impl ScoreboardApp {
         let cos_a = angle.cos();
         let sin_a = angle.sin();
 
-        // 描画領域の確保
         let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
         let painter = ui.painter();
         let center = rect.center();
-        let hw = size.x / 2.0 * cos_a.abs(); // 回転による幅の圧縮
+        
+        // 回転による横幅の圧縮（最小値を設けて厚みを見せる）
+        let hw = size.x / 2.0 * cos_a.abs().max(0.05); 
         let hh = size.y / 2.0;
-        let thickness = 6.0 * sin_a.abs(); // 回転中だけ厚みが見える演出
+        
+        // 厚みの設定
+        let thickness = 8.0 * sin_a.abs(); 
+        let off = if cos_a > 0.0 { thickness } else { -thickness };
 
-        // --- 頂点定義 ---
         let top = center.y - hh;
         let bottom = center.y + hh;
         let left = center.x - hw;
         let right = center.x + hw;
-        let off = if cos_a > 0.0 { thickness } else { -thickness };
 
-        // 側面（厚み）
+        // 1. 側面の描画（厚み部分：少し暗い色にする）
+        let side_color = egui::Color32::from_rgb(
+            color.r().saturating_sub(40),
+            color.g().saturating_sub(40),
+            color.b().saturating_sub(40),
+        );
+        
         painter.add(egui::Shape::convex_polygon(
             vec![
                 egui::pos2(right, top),
-                egui::pos2(right + off, top),
-                egui::pos2(right + off, bottom),
+                egui::pos2(right + off, top + 2.0),
+                egui::pos2(right + off, bottom - 2.0),
                 egui::pos2(right, bottom),
             ],
-            egui::Color32::from_rgb(40, 40, 50),
+            side_color,
             egui::Stroke::NONE,
         ));
 
-        // 表面
+        // 2. メインの板（表面）
         painter.add(egui::Shape::convex_polygon(
             vec![
                 egui::pos2(left, top),
@@ -276,12 +284,12 @@ impl ScoreboardApp {
                 egui::pos2(right, bottom),
                 egui::pos2(left, bottom),
             ],
-            egui::Color32::from_rgb(60, 60, 70),
-            egui::Stroke::new(1.0, egui::Color32::GRAY),
+            color,
+            egui::Stroke::new(2.0, egui::Color32::WHITE), // 白い縁取り
         ));
 
-        // 文字（反転中は表示しない）
-        if cos_a.abs() > 0.4 {
+        // 3. テキスト描画
+        if cos_a.abs() > 0.3 {
             painter.text(
                 center,
                 egui::Align2::CENTER_CENTER,
@@ -395,20 +403,50 @@ impl eframe::App for ScoreboardApp {
             ui.add_space(20.0);
 
             if self.is_3d_mode {
-                egui::Grid::new("3d_grid").spacing([20.0, 20.0]).show(ui, |ui| {
-                    ui.label("Name");
-                    for p in &players {
-                        self.ui_3d_card(ui, &p.name, egui::vec2(120.0, 40.0), 20.0, None);
-                    }
-                    ui.end_row();
+                egui::ScrollArea::both().show(ui, |ui| {
+                    egui::Grid::new("3d_grid_extended")
+                        .spacing([15.0, 15.0])
+                        .show(ui, |ui| {
+                            // --- 名前行 ---
+                            // ui.label(egui::RichText::new("PLAYER").strong());
+                            for p in &players {
+                                self.ui_3d_card(ui, &p.name, egui::vec2(130.0, 40.0), 18.0, egui::Color32::from_rgb(60, 60, 80), None);
+                            }
+                            ui.end_row();
 
-                    ui.label("Score");
-                    for p in &players {
-                        let score_str = display_statuses[&p.id].score.to_string();
-                        let change = self.last_change_times.get(&p.id).cloned();
-                        self.ui_3d_card(ui, &score_str, egui::vec2(80.0, 60.0), 30.0, change);
-                    }
-                    ui.end_row();
+                            // --- 所属/学年（セットで1枚） ---
+                            // ui.label("INFO");
+                            for p in &players {
+                                let info = format!("{}\n{}", p.affiliation.as_deref().unwrap_or("-"), p.grade.as_deref().unwrap_or("-"));
+                                self.ui_3d_card(ui, &info, egui::vec2(130.0, 50.0), 12.0, egui::Color32::from_rgb(50, 70, 50), None);
+                            }
+                            ui.end_row();
+
+                            // --- スコア行（アニメーション付き） ---
+                            // ui.label(egui::RichText::new("SCORE").color(egui::Color32::LIGHT_BLUE).strong());
+                            for p in &players {
+                                let score_str = display_statuses[&p.id].score.to_string();
+                                let change = self.last_change_times.get(&p.id).cloned();
+                                self.ui_3d_card(ui, &score_str, egui::vec2(130.0, 80.0), 45.0, egui::Color32::from_rgb(40, 80, 120), change);
+                            }
+                            ui.end_row();
+
+                            // --- 正解数 ---
+                            // ui.label("CORRECT");
+                            for p in &players {
+                                let val = display_statuses[&p.id].correct_count.to_string();
+                                self.ui_3d_card(ui, &val, egui::vec2(130.0, 40.0), 20.0, egui::Color32::from_rgb(40, 100, 40), None);
+                            }
+                            ui.end_row();
+
+                            // --- 誤答数 ---
+                            // ui.label("WRONG");
+                            for p in &players {
+                                let val = display_statuses[&p.id].wrong_count.to_string();
+                                self.ui_3d_card(ui, &val, egui::vec2(130.0, 40.0), 20.0, egui::Color32::from_rgb(120, 40, 40), None);
+                            }
+                            ui.end_row();
+                        });
                 });
             } else {
                 self.render_classic_grid(ui, &players, &display_statuses);
