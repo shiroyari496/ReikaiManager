@@ -23,7 +23,7 @@ fn main() -> eframe::Result<()> {
         .expect("Failed to load questions from data/questions.csv");
 
     // 共有状態の作成
-    let shared_state = Arc::new(Mutex::new(SharedQuizState::new(players.clone())));
+    let shared_state = Arc::new(Mutex::new(SharedQuizState::new(players.clone(), questions.clone())));
 
     // // 【サブスレッド】ターミナル操作ロジック
     // let state_for_thread = Arc::clone(&shared_state);
@@ -213,7 +213,7 @@ impl ScoreboardApp {
         setup_custom_fonts(&cc.egui_ctx);
         Self {
             state,
-            is_3d_mode: false,
+            is_3d_mode: true,
             last_scores: HashMap::new(),
             last_change_times: HashMap::new(),
         }
@@ -377,9 +377,16 @@ impl ScoreboardApp {
 impl eframe::App for ScoreboardApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // 1. 共有データの取得
-        let (current_question, players, display_statuses) = {
-            let mut data = self.state.lock().unwrap();
-            (data.current_question, data.players.clone(), data.display_statuses.clone())
+        let (current_question, questions, players, display_statuses) = {
+            let data = self.state.lock().unwrap();
+            (data.current_question as usize, data.questions.clone(), data.players.clone(), data.display_statuses.clone())
+        };
+
+        // メイン画面用の問題文ロジック (事故防止: indexが1以上なら「前回」を表示)
+        let display_q_text = if current_question > 0 && current_question <= questions.len() {
+            &questions[current_question - 1].text
+        } else {
+            "Waiting for Quiz to start..."
         };
 
         // 2. スコア変更の検知とアニメーション更新
@@ -394,11 +401,27 @@ impl eframe::App for ScoreboardApp {
 
         // 3. メインUIの描画
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.heading(format!("Question #{}", current_question));
-                ui.separator();
-                ui.checkbox(&mut self.is_3d_mode, "3D Mode");
+            // --- 最上部に問題文パネル (3D/2D共通) ---
+            ui.vertical_centered(|ui| {
+                let panel_width = ui.available_width() - 40.0;
+                let q_label = format!("Q{}: {}", current_question, display_q_text);
+                
+                // 3Dモードなら問題文も3Dカード化
+                if self.is_3d_mode {
+                    self.ui_3d_card(ui, &q_label, egui::vec2(panel_width, 60.0), 22.0, egui::Color32::from_rgb(40, 40, 50), None);
+                } else {
+                    ui.group(|ui| {
+                        ui.set_width(panel_width);
+                        ui.heading(egui::RichText::new(q_label).size(30.0).strong());
+                    });
+                }
             });
+
+            // ui.horizontal(|ui| {
+            //     ui.heading(format!("Question #{}", current_question));
+            //     ui.separator();
+            //     ui.checkbox(&mut self.is_3d_mode, "3D Mode");
+            // });
 
             ui.add_space(20.0);
 
@@ -453,12 +476,12 @@ impl eframe::App for ScoreboardApp {
             }
         });
 
-        // 4. コントロールパネル（別ウィンドウ）
+        // 4. コントロールパネル
         ctx.show_viewport_immediate(
             egui::ViewportId::from_hash_of("control_panel"),
             egui::ViewportBuilder::default()
-                .with_title("Quiz Control Panel")
-                .with_inner_size([500.0, 600.0]),
+                .with_title("Quiz Scoreboard Control")
+                .with_inner_size([400.0, 500.0]),
             |ctx, class| {
                 assert!(
                     class == egui::ViewportClass::Immediate,
@@ -467,6 +490,27 @@ impl eframe::App for ScoreboardApp {
 
                 egui::CentralPanel::default().show(ctx, |ui| {
                     let mut data = self.state.lock().unwrap();
+                    ui.heading("Quiz Monitor");
+                    ui.group(|ui| {
+                        ui.set_width(ui.available_width());
+                        // ディスプレイに映っているもの（前回分）
+                        ui.label(egui::RichText::new("ON SCREEN (Previous):").color(egui::Color32::GOLD));
+                        let prev_text = if data.current_question > 0 { &data.questions[data.current_question as usize - 1].text } else { "-" };
+                        ui.label(prev_text);
+                        
+                        ui.separator();
+                        
+                        // これから出すもの（今回分）
+                        ui.label(egui::RichText::new("NEXT UP (Current):").color(egui::Color32::LIGHT_BLUE));
+                        let curr_idx = data.current_question as usize;
+                        if curr_idx < data.questions.len() {
+                            ui.label(egui::RichText::new(&data.questions[curr_idx].text).size(18.0).strong());
+                        } else {
+                            ui.label("No more questions.");
+                        }
+                    });
+
+                    ui.add_space(10.0);
                     ui.heading("Controller");
                     ui.separator();
 
@@ -480,7 +524,7 @@ impl eframe::App for ScoreboardApp {
 
                     ui.separator();
 
-                    // 簡易回答操作
+                    // 解答操作
                     let player_info: Vec<(PlayerId, String)> = data.players.iter()
                         .map(|p| (p.id, p.name.clone()))
                         .collect();
@@ -502,8 +546,9 @@ impl eframe::App for ScoreboardApp {
                         });
                     }
 
+                    // 手動得点操作
                     ui.separator();
-                    ui.label("Player Status Edit (Drag to adjust)");
+                    ui.label("Player Status Edit");
                     egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
                         egui::Grid::new("edit_grid").striped(true).show(ui, |ui| {
                             for (pid, name) in &player_info {

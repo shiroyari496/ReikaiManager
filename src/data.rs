@@ -128,11 +128,12 @@ pub struct SharedQuizState {
     pub players: Vec<Player>,
     pub display_statuses: HashMap<PlayerId, PlayerStatus>,
     pub working_statuses: HashMap<PlayerId, PlayerStatus>,
+    pub questions: Vec<Question>,
     pub current_question: u32,
 }
 
 impl SharedQuizState {
-    pub fn new(players: Vec<Player>) -> Self {
+    pub fn new(players: Vec<Player>, questions: Vec<Question>) -> Self {
         let mut display_statuses = HashMap::new();
         for p in &players {
             display_statuses.insert(p.id, PlayerStatus::new());
@@ -142,6 +143,7 @@ impl SharedQuizState {
             players,
             display_statuses,
             working_statuses,
+            questions,
             current_question: 1,
         }
     }
