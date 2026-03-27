@@ -375,43 +375,64 @@ impl ScoreboardApp {
             egui::Stroke::new(2.0, egui::Color32::WHITE),
         ));
 
-        // テキスト描画（縦書き）
+        // テキスト描画（縦書き - 1文字ごとに改行）
         if cos_a.abs() > 0.3 {
             let visibility = cos_a.abs();
             let alpha = (visibility * 255.0) as u8;
             let text_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha);
 
-            // 上: 名前（大きく）
-            let name_pos = egui::pos2(center.x, center.y - hh * 0.5);
-            painter.text(
-                name_pos,
-                egui::Align2::CENTER_CENTER,
-                name,
-                egui::FontId::proportional(20.0 * visibility),
-                text_color,
-            );
+            let char_height_name = 18.0 * visibility;
+            let char_height_small = 11.0 * visibility;
 
-            // 中央: 所属（小さく）
+            // 左側: 名前を1文字ごとに改行（大きく）
+            let name_chars: Vec<char> = name.chars().collect();
+            let total_name_height = name_chars.len() as f32 * char_height_name;
+            let mut y_offset = center.y - total_name_height / 2.0;
+            for ch in &name_chars {
+                let pos = egui::pos2(center.x - hw * 0.6, y_offset + char_height_name / 2.0);
+                painter.text(
+                    pos,
+                    egui::Align2::CENTER_CENTER,
+                    ch.to_string(),
+                    egui::FontId::proportional(16.0 * visibility),
+                    text_color,
+                );
+                y_offset += char_height_name;
+            }
+
+            // 右側上部: 所属を1文字ごとに改行（小さく）
             let affiliation_str = affiliation.unwrap_or("-");
-            let affiliation_pos = egui::pos2(center.x, center.y);
-            painter.text(
-                affiliation_pos,
-                egui::Align2::CENTER_CENTER,
-                affiliation_str,
-                egui::FontId::proportional(12.0 * visibility),
-                text_color,
-            );
+            let aff_chars: Vec<char> = affiliation_str.chars().collect();
+            let total_aff_height = aff_chars.len() as f32 * char_height_small;
+            let mut y_offset = center.y - hh * 0.35 - total_aff_height / 2.0;
+            for ch in &aff_chars {
+                let pos = egui::pos2(center.x + hw * 0.6, y_offset + char_height_small / 2.0);
+                painter.text(
+                    pos,
+                    egui::Align2::CENTER_CENTER,
+                    ch.to_string(),
+                    egui::FontId::proportional(10.0 * visibility),
+                    text_color,
+                );
+                y_offset += char_height_small;
+            }
 
-            // 下: 学年（小さく）
+            // 右側下部: 学年を1文字ごとに改行（小さく）
             let grade_str = grade.unwrap_or("-");
-            let grade_pos = egui::pos2(center.x, center.y + hh * 0.5);
-            painter.text(
-                grade_pos,
-                egui::Align2::CENTER_CENTER,
-                grade_str,
-                egui::FontId::proportional(12.0 * visibility),
-                text_color,
-            );
+            let grade_chars: Vec<char> = grade_str.chars().collect();
+            let total_grade_height = grade_chars.len() as f32 * char_height_small;
+            let mut y_offset = center.y + hh * 0.1 - total_grade_height / 2.0;
+            for ch in &grade_chars {
+                let pos = egui::pos2(center.x + hw * 0.6, y_offset + char_height_small / 2.0);
+                painter.text(
+                    pos,
+                    egui::Align2::CENTER_CENTER,
+                    ch.to_string(),
+                    egui::FontId::proportional(10.0 * visibility),
+                    text_color,
+                );
+                y_offset += char_height_small;
+            }
         }
     }
 
