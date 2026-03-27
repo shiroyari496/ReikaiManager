@@ -321,6 +321,14 @@ impl ScoreboardApp {
                     let body_size = 30.0;
                     let score_size = 60.0;
 
+                    // --- 1R順位 行 ---
+                    ui.label(egui::RichText::new("1R Rank").size(header_size));
+                    for p in players {
+                        let rank_str = p.round1_rank.map_or("--".to_string(), |r| format!("{}位", r));
+                        ui.label(egui::RichText::new(rank_str).size(body_size).strong());
+                    }
+                    ui.end_row();
+
                     // --- Name 行 ---
                     ui.label(egui::RichText::new("Name").size(header_size));
                     for p in players {
@@ -487,6 +495,13 @@ impl eframe::App for ScoreboardApp {
                     egui::Grid::new("3d_grid_extended")
                         .spacing([15.0, 15.0])
                         .show(ui, |ui| {
+                            // --- 1R順位行 ---
+                            for p in &players {
+                                let rank_str = p.round1_rank.map_or("--".to_string(), |r| r.to_string());
+                                self.ui_3d_card(ui, &format!("{}位", rank_str), egui::vec2(130.0, 30.0), 14.0, egui::Color32::from_rgb(200, 150, 80), None);
+                            }
+                            ui.end_row();
+
                             // --- 名前行 ---
                             // ui.label(egui::RichText::new("PLAYER").strong());
                             for p in &players {
