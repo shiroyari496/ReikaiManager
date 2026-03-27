@@ -644,7 +644,7 @@ impl eframe::App for ScoreboardApp {
 
                             // --- 名前と所属・学年（統合） ---
                             for p in &players {
-                                self.ui_3d_player_info_card(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), egui::vec2(180.0, 60.0), None);
+                                self.ui_3d_player_info_card(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), egui::vec2(130.0, 180.0), None);
                             }
                             ui.end_row();
 
