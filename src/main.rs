@@ -375,14 +375,14 @@ impl ScoreboardApp {
             egui::Stroke::new(2.0, egui::Color32::WHITE),
         ));
 
-        // テキスト描画
+        // テキスト描画（縦書き）
         if cos_a.abs() > 0.3 {
             let visibility = cos_a.abs();
             let alpha = (visibility * 255.0) as u8;
             let text_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha);
 
-            // 左側: 名前（大きく）
-            let name_pos = egui::pos2(center.x - hw * 0.5, center.y);
+            // 上: 名前（大きく）
+            let name_pos = egui::pos2(center.x, center.y - hh * 0.5);
             painter.text(
                 name_pos,
                 egui::Align2::CENTER_CENTER,
@@ -391,132 +391,25 @@ impl ScoreboardApp {
                 text_color,
             );
 
-            // 右側上: 所属（小さく）
+            // 中央: 所属（小さく）
             let affiliation_str = affiliation.unwrap_or("-");
-            let affiliation_pos = egui::pos2(center.x + hw * 0.3, center.y - hh * 0.35);
+            let affiliation_pos = egui::pos2(center.x, center.y);
             painter.text(
                 affiliation_pos,
                 egui::Align2::CENTER_CENTER,
                 affiliation_str,
-                egui::FontId::proportional(10.0 * visibility),
+                egui::FontId::proportional(12.0 * visibility),
                 text_color,
             );
 
-            // 右側下: 学年（小さく）
+            // 下: 学年（小さく）
             let grade_str = grade.unwrap_or("-");
-            let grade_pos = egui::pos2(center.x + hw * 0.3, center.y + hh * 0.35);
+            let grade_pos = egui::pos2(center.x, center.y + hh * 0.5);
             painter.text(
                 grade_pos,
                 egui::Align2::CENTER_CENTER,
                 grade_str,
-                egui::FontId::proportional(10.0 * visibility),
-                text_color,
-            );
-        }
-    }
-
-    /// 名前（左手前）と所属・学年（右奥）を1つのボックスに配置した3Dカード描画
-    fn ui_3d_player_info_card(
-        &self,
-        ui: &mut egui::Ui,
-        name: &str,
-        affiliation: Option<&str>,
-        grade: Option<&str>,
-        size: egui::Vec2,
-        change_time: Option<std::time::Instant>
-    ) {
-        let t = change_time.map_or(0.0, |inst| {
-            let elapsed = inst.elapsed().as_secs_f32();
-            let duration = 0.6;
-            if elapsed < duration {
-                (1.0 - (elapsed / duration * std::f32::consts::PI).cos()) / 2.0
-            } else { 0.0 }
-        });
-
-        let angle = t * std::f32::consts::PI;
-        let cos_a = angle.cos();
-        let sin_a = angle.sin();
-
-        let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
-        let painter = ui.painter();
-        
-        let hw = size.x / 2.0 * cos_a.abs().max(0.05);
-        let hh = size.y / 2.0;
-        let thickness = 8.0 * sin_a.abs();
-        let off = if cos_a > 0.0 { thickness } else { -thickness };
-
-        let center = rect.center();
-        let top = center.y - hh;
-        let bottom = center.y + hh;
-        let left = center.x - hw;
-        let right = center.x + hw;
-
-        let color = egui::Color32::from_rgb(60, 60, 80);
-        let side_color = egui::Color32::from_rgb(
-            color.r().saturating_sub(40),
-            color.g().saturating_sub(40),
-            color.b().saturating_sub(40),
-        );
-
-        // 側面の描画
-        painter.add(egui::Shape::convex_polygon(
-            vec![
-                egui::pos2(right, top),
-                egui::pos2(right + off, top + 2.0),
-                egui::pos2(right + off, bottom - 2.0),
-                egui::pos2(right, bottom),
-            ],
-            side_color,
-            egui::Stroke::NONE,
-        ));
-
-        // メインの板（表面）
-        painter.add(egui::Shape::convex_polygon(
-            vec![
-                egui::pos2(left, top),
-                egui::pos2(right, top),
-                egui::pos2(right, bottom),
-                egui::pos2(left, bottom),
-            ],
-            color,
-            egui::Stroke::new(2.0, egui::Color32::WHITE),
-        ));
-
-        // テキスト描画
-        if cos_a.abs() > 0.3 {
-            let visibility = cos_a.abs();
-            let alpha = (visibility * 255.0) as u8;
-            let text_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha);
-
-            // 左側: 名前（大きく）
-            let name_pos = egui::pos2(center.x - hw * 0.5, center.y);
-            painter.text(
-                name_pos,
-                egui::Align2::CENTER_CENTER,
-                name,
-                egui::FontId::proportional(20.0 * visibility),
-                text_color,
-            );
-
-            // 右側上: 所属（小さく）
-            let affiliation_str = affiliation.unwrap_or("-");
-            let affiliation_pos = egui::pos2(center.x + hw * 0.3, center.y - hh * 0.35);
-            painter.text(
-                affiliation_pos,
-                egui::Align2::CENTER_CENTER,
-                affiliation_str,
-                egui::FontId::proportional(10.0 * visibility),
-                text_color,
-            );
-
-            // 右側下: 学年（小さく）
-            let grade_str = grade.unwrap_or("-");
-            let grade_pos = egui::pos2(center.x + hw * 0.3, center.y + hh * 0.35);
-            painter.text(
-                grade_pos,
-                egui::Align2::CENTER_CENTER,
-                grade_str,
-                egui::FontId::proportional(10.0 * visibility),
+                egui::FontId::proportional(12.0 * visibility),
                 text_color,
             );
         }
