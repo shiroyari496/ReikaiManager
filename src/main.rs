@@ -394,7 +394,7 @@ impl ScoreboardApp {
                     pos,
                     egui::Align2::CENTER_CENTER,
                     ch.to_string(),
-                    egui::FontId::proportional(22.0 * visibility),
+                    egui::FontId::proportional(60.0 * visibility),
                     text_color,
                 );
                 y_offset += char_height_name;
@@ -411,7 +411,7 @@ impl ScoreboardApp {
                     pos,
                     egui::Align2::CENTER_CENTER,
                     ch.to_string(),
-                    egui::FontId::proportional(7.0 * visibility),
+                    egui::FontId::proportional(30.0 * visibility),
                     text_color,
                 );
                 y_offset += char_height_small;
@@ -428,7 +428,7 @@ impl ScoreboardApp {
                     pos,
                     egui::Align2::CENTER_CENTER,
                     ch.to_string(),
-                    egui::FontId::proportional(7.0 * visibility),
+                    egui::FontId::proportional(30.0 * visibility),
                     text_color,
                 );
                 y_offset += char_height_small;
