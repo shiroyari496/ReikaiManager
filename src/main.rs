@@ -626,8 +626,26 @@ impl eframe::App for ScoreboardApp {
 
             if self.is_3d_mode {
                 egui::ScrollArea::both().show(ui, |ui| {
+                    // タイル間隔を自動調整
+                    let available_width = ui.available_width();
+                    let player_count = players.len().max(1);
+                    let tile_width = 130.0;
+                    
+                    // 必要な幅を計算 (タイル幅 × プレイヤー数 + 間隔 × (プレイヤー数-1))
+                    let total_tiles_width = player_count as f32 * tile_width;
+                    let default_spacing_x = 15.0;
+                    
+                    // スペースが不足している場合は間隔を縮小、余裕がある場合はデフォルト間隔
+                    let spacing_x = if total_tiles_width + default_spacing_x * (player_count - 1).max(1) as f32 > available_width {
+                        ((available_width - total_tiles_width) / (player_count - 1).max(1) as f32).max(5.0)
+                    } else {
+                        default_spacing_x
+                    };
+                    
+                    let spacing_y = 15.0;
+                    
                     egui::Grid::new("3d_grid_extended")
-                        .spacing([15.0, 15.0])
+                        .spacing([spacing_x, spacing_y])
                         .show(ui, |ui| {
                             // --- 1R順位行 ---
                             for p in &players {
