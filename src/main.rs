@@ -381,8 +381,8 @@ impl ScoreboardApp {
             let alpha = (visibility * 255.0) as u8;
             let text_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha);
 
-            let char_height_name = 18.0 * visibility;
-            let char_height_small = 11.0 * visibility;
+            let char_height_name = 24.0 * visibility;
+            let char_height_small = 8.0 * visibility;
 
             // 左側: 名前を1文字ごとに改行（大きく）
             let name_chars: Vec<char> = name.chars().collect();
@@ -394,7 +394,7 @@ impl ScoreboardApp {
                     pos,
                     egui::Align2::CENTER_CENTER,
                     ch.to_string(),
-                    egui::FontId::proportional(16.0 * visibility),
+                    egui::FontId::proportional(22.0 * visibility),
                     text_color,
                 );
                 y_offset += char_height_name;
@@ -411,7 +411,7 @@ impl ScoreboardApp {
                     pos,
                     egui::Align2::CENTER_CENTER,
                     ch.to_string(),
-                    egui::FontId::proportional(10.0 * visibility),
+                    egui::FontId::proportional(7.0 * visibility),
                     text_color,
                 );
                 y_offset += char_height_small;
@@ -428,7 +428,7 @@ impl ScoreboardApp {
                     pos,
                     egui::Align2::CENTER_CENTER,
                     ch.to_string(),
-                    egui::FontId::proportional(10.0 * visibility),
+                    egui::FontId::proportional(7.0 * visibility),
                     text_color,
                 );
                 y_offset += char_height_small;
