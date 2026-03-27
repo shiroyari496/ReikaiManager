@@ -1,8 +1,9 @@
-use crate::data::{Player, PlayerStatus, PlayerId, Event, QuestionStatus};
+use crate::data::{Player, PlayerStatus, PlayerId, Event, QuestionStatus, RuleOption};
 use std::collections::HashMap;
 use std::io::{self, Write};
 
 /// 標準入力から1行読み込む
+#[allow(dead_code)]
 pub fn read_line() -> String {
     let mut s = String::new();
     io::stdin().read_line(&mut s).unwrap();
@@ -10,12 +11,14 @@ pub fn read_line() -> String {
 }
 
 /// ターミナルでコマンドプロンプトを表示
+#[allow(dead_code)]
 pub fn show_prompt() {
     print!("event> ");
     io::stdout().flush().unwrap();
 }
 
 /// プレイヤー情報を表示
+#[allow(dead_code)]
 pub fn display_players(players: &[Player]) {
     println!("Players:");
     for p in players {
@@ -24,6 +27,7 @@ pub fn display_players(players: &[Player]) {
 }
 
 /// 問題を表示
+#[allow(dead_code)]
 pub fn display_question(question_id: usize, question_text: &str) {
     println!("\n=== Question {} ===", question_id);
     println!("Question: {}", question_text);
@@ -31,6 +35,7 @@ pub fn display_question(question_id: usize, question_text: &str) {
 }
 
 /// スコアボードを表示
+#[allow(dead_code)]
 pub fn display_scores(players: &[Player], player_statuses: &HashMap<PlayerId, PlayerStatus>) {
     println!("\nScores:");
     for p in players {
@@ -49,6 +54,7 @@ pub fn display_scores(players: &[Player], player_statuses: &HashMap<PlayerId, Pl
 }
 
 /// `set` コマンドを解析してスコアを設定
+#[allow(dead_code)]
 pub fn handle_set_command(
     parts: &[&str],
     players: &[Player],
@@ -86,6 +92,7 @@ pub fn handle_set_command(
 }
 
 /// buzz/correct/wrong コマンドを解析
+#[allow(dead_code)]
 pub fn handle_answer_command(
     parts: &[&str],
     players: &[Player],
@@ -147,4 +154,61 @@ pub fn handle_answer_command(
         .push(event);
 
     Ok(())
+}
+
+/// ターミナルでルール選択を行う
+#[allow(dead_code)]
+pub fn select_rule() -> Result<(RuleOption, i32, i32), String> {
+    println!("\n=== Rule Selection ===");
+    println!("Available rules:");
+    for (idx, rule) in RuleOption::all_options().iter().enumerate() {
+        println!("  {}: {}", idx, rule.label());
+    }
+    
+    loop {
+        print!("Select rule (0-{}): ", RuleOption::all_options().len() - 1);
+        io::stdout().flush().unwrap();
+        
+        let input = read_line();
+        if let Ok(idx) = input.parse::<usize>() {
+            if idx < RuleOption::all_options().len() {
+                let selected_rule = RuleOption::all_options()[idx];
+                
+                if selected_rule == RuleOption::NCorrectMWrong {
+                    let (n, m) = get_ncorrect_mwrong_params()?;
+                    return Ok((selected_rule, n, m));
+                } else {
+                    return Ok((selected_rule, 0, 0));
+                }
+            }
+        }
+        println!("Invalid input. Please enter a number 0-{}.", RuleOption::all_options().len() - 1);
+    }
+}
+
+/// N Correct M Wrong のパラメータを取得
+#[allow(dead_code)]
+pub fn get_ncorrect_mwrong_params() -> Result<(i32, i32), String> {
+    loop {
+        print!("Enter N (correct to win) [default: 7]: ");
+        io::stdout().flush().unwrap();
+        let input = read_line();
+        let n: i32 = if input.is_empty() {
+            7
+        } else {
+            input.parse().map_err(|_| "Invalid number".to_string())?
+        };
+        
+        print!("Enter M (wrong to eliminate) [default: 3]: ");
+        io::stdout().flush().unwrap();
+        let input = read_line();
+        let m: i32 = if input.is_empty() {
+            3
+        } else {
+            input.parse().map_err(|_| "Invalid number".to_string())?
+        };
+        
+        println!("Rule set: {} Correct {} Wrong", n, m);
+        return Ok((n, m));
+    }
 }

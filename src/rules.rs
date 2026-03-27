@@ -2,6 +2,7 @@ use crate::data::{PlayerId, PlayerStatus, Event, QuestionStatus};
 use std::collections::HashMap;
 
 /// クイズルールの trait
+#[allow(dead_code)]
 pub trait QuizRule {
     fn apply(
         &self,
@@ -12,6 +13,7 @@ pub trait QuizRule {
 }
 
 /// ルール無し（全員が解答可能）
+#[allow(dead_code)]
 pub struct FreeBatting;
 
 impl QuizRule for FreeBatting {
@@ -98,3 +100,23 @@ impl QuizRule for NCorrectMWrong {
 
 // UpDownルール、NbyNルール、PlusMinusルール、Freezeルール、
 // AttackSurvivalルールなどは実装時に追加してください
+
+/// ルール選択に基づいて適切なルールを適用する
+#[allow(dead_code)]
+pub fn apply_selected_rule(
+    rule_option: &crate::data::RuleOption,
+    n: i32,
+    m: i32,
+    player_statuses: &mut HashMap<PlayerId, PlayerStatus>,
+    player_events: &mut HashMap<PlayerId, Vec<Event>>,
+    question_status: &mut QuestionStatus,
+) {
+    match rule_option {
+        crate::data::RuleOption::FreeBatting => {
+            FreeBatting.apply(player_statuses, player_events, question_status);
+        }
+        crate::data::RuleOption::NCorrectMWrong => {
+            NCorrectMWrong::new(n, m).apply(player_statuses, player_events, question_status);
+        }
+    }
+}

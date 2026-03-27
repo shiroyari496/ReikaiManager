@@ -67,8 +67,11 @@ pub struct PlayerStatus {
     pub score: i32,
     pub correct_count: u32,
     pub wrong_count: u32,
+    #[allow(dead_code)]
     pub frozen_until: Option<u32>,
+    #[allow(dead_code)]
     pub is_winner: bool,
+    #[allow(dead_code)]
     pub is_eliminated: bool,
 }
 
@@ -93,12 +96,14 @@ impl Default for PlayerStatus {
 
 // --- 各問題の状態 ---
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct QuestionStatus {
     pub finished: bool,
     pub locked: HashSet<PlayerId>,
 }
 
 impl QuestionStatus {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             finished: false,
@@ -115,11 +120,38 @@ impl Default for QuestionStatus {
 
 // --- イベント（ラウンド中に入力される） ---
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum Event {
     Buzz(u32),  // 解答権を獲得した順番
     Correct,
     Wrong,
     Set(u32),
+}
+
+// --- クイズルール選択 ---
+#[derive(Clone, Debug, Copy, PartialEq, Eq)]
+pub enum RuleOption {
+    FreeBatting,
+    NCorrectMWrong,
+}
+
+impl RuleOption {
+    pub fn label(&self) -> &str {
+        match self {
+            Self::FreeBatting => "Free Batting",
+            Self::NCorrectMWrong => "N Correct M Wrong",
+        }
+    }
+
+    pub fn all_options() -> &'static [RuleOption] {
+        &[Self::FreeBatting, Self::NCorrectMWrong]
+    }
+}
+
+impl Default for RuleOption {
+    fn default() -> Self {
+        Self::FreeBatting
+    }
 }
 
 // --- GUIと共有するためのデータ ---
@@ -130,6 +162,9 @@ pub struct SharedQuizState {
     pub working_statuses: HashMap<PlayerId, PlayerStatus>,
     pub questions: Vec<Question>,
     pub current_question: u32,
+    pub rule_option: RuleOption,
+    pub n_correct: i32,
+    pub m_wrong: i32,
 }
 
 impl SharedQuizState {
@@ -145,6 +180,9 @@ impl SharedQuizState {
             working_statuses,
             questions,
             current_question: 1,
+            rule_option: RuleOption::default(),
+            n_correct: 7,
+            m_wrong: 3,
         }
     }
 }
