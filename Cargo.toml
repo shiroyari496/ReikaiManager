@@ -1,7 +1,8 @@
 [package]
-name = "zuiryoreikai"
+name = "ReikaiManager"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
 
 [dependencies]
 csv = "1.4.0"
