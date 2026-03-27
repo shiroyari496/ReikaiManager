@@ -324,7 +324,15 @@ impl ScoreboardApp {
                     // --- 1R順位 行 ---
                     ui.label(egui::RichText::new("1R Rank").size(header_size));
                     for p in players {
-                        let rank_str = p.round1_rank.map_or("--".to_string(), |r| format!("{}位", r));
+                        let rank_str = p.round1_rank.map_or("--".to_string(), |r| {
+                            let ordinal = match r % 10 {
+                                1 if r % 100 != 11 => "st",
+                                2 if r % 100 != 12 => "nd",
+                                3 if r % 100 != 13 => "rd",
+                                _ => "th",
+                            };
+                            format!("ID:{} {}{}", p.id, r, ordinal)
+                        });
                         ui.label(egui::RichText::new(rank_str).size(body_size).strong());
                     }
                     ui.end_row();
@@ -497,8 +505,16 @@ impl eframe::App for ScoreboardApp {
                         .show(ui, |ui| {
                             // --- 1R順位行 ---
                             for p in &players {
-                                let rank_str = p.round1_rank.map_or("--".to_string(), |r| r.to_string());
-                                self.ui_3d_card(ui, &format!("{}位", rank_str), egui::vec2(130.0, 30.0), 14.0, egui::Color32::from_rgb(200, 150, 80), None);
+                                let rank_str = p.round1_rank.map_or("--".to_string(), |r| {
+                                    let ordinal = match r % 10 {
+                                        1 if r % 100 != 11 => "st",
+                                        2 if r % 100 != 12 => "nd",
+                                        3 if r % 100 != 13 => "rd",
+                                        _ => "th",
+                                    };
+                                    format!("ID:{} {}{}", p.id, r, ordinal)
+                                });
+                                self.ui_3d_card(ui, &rank_str, egui::vec2(130.0, 30.0), 14.0, egui::Color32::from_rgb(200, 150, 80), None);
                             }
                             ui.end_row();
 
