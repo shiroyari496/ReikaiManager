@@ -9,9 +9,8 @@ use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use std::time::Instant;
 
-use crate::data::{Player, Question, PlayerStatus, QuestionStatus, Event, SharedQuizState, PlayerId};
+use crate::data::{Player, Question, PlayerStatus, QuestionStatus, Event, SharedQuizState, PlayerId, RuleOption};
 use crate::loader::{load_players, load_questions, write_log_head, write_log_line};
-use crate::rules::{FreeBatting, QuizRule};
 use crate::terminal::{read_line, show_prompt, display_players, display_question, display_scores, 
                      handle_set_command, handle_answer_command};
 
@@ -51,12 +50,13 @@ fn main() -> eframe::Result<()> {
     )
 }
 
+#[allow(dead_code)]
 fn run_terminal_loop(
     state: Arc<Mutex<SharedQuizState>>,
     players: Vec<Player>,
     questions: Vec<Question>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let rule = FreeBatting;
+    use crate::rules::apply_selected_rule;
     let question_num = questions.len();
 
     let mut player_statuses: HashMap<PlayerId, PlayerStatus> = HashMap::new();
@@ -154,7 +154,15 @@ fn run_terminal_loop(
         }
 
         // ルールを適用してスコアを更新
-        rule.apply(&mut player_statuses, &mut player_events, &mut question_status);
+        {
+            let shared_state = state.lock().unwrap();
+            let rule_option = shared_state.rule_option;
+            let n = shared_state.n_correct;
+            let m = shared_state.m_wrong;
+            drop(shared_state);  // ロックを明示的に解放
+            
+            apply_selected_rule(&rule_option, n, m, &mut player_statuses, &mut player_events, &mut question_status);
+        }
 
         display_scores(&players, &player_statuses);
 
@@ -409,6 +417,47 @@ impl eframe::App for ScoreboardApp {
 
         // 3. メインUIの描画
         egui::CentralPanel::default().show(ctx, |ui| {
+            // --- コントロールパネル（ルール選択など） ---
+            ui.group(|ui| {
+                ui.horizontal(|ui| {
+                    // 3D モード トグル
+                    ui.checkbox(&mut self.is_3d_mode, "3D Mode");
+                    ui.separator();
+                    
+                    // ルール選択
+                    ui.label("Rule:");
+                    let mut current_rule = {
+                        let state = self.state.lock().unwrap();
+                        state.rule_option
+                    };
+                    
+                    let mut rule_changed = false;
+                    for &rule in RuleOption::all_options() {
+                        if ui.selectable_label(current_rule == rule, rule.label()).clicked() {
+                            current_rule = rule;
+                            rule_changed = true;
+                        }
+                    }
+                    
+                    if rule_changed {
+                        let mut state = self.state.lock().unwrap();
+                        state.rule_option = current_rule;
+                    }
+                    
+                    // N Correct M Wrong パラメータ編集
+                    if current_rule == RuleOption::NCorrectMWrong {
+                        ui.separator();
+                        let mut state = self.state.lock().unwrap();
+                        ui.label("N Correct:");
+                        ui.add(egui::Slider::new(&mut state.n_correct, 1..=10).text(""));
+                        ui.label("M Wrong:");
+                        ui.add(egui::Slider::new(&mut state.m_wrong, 1..=10).text(""));
+                    }
+                });
+            });
+
+            ui.add_space(10.0);
+
             // --- 最上部に問題文パネル (3D/2D共通) ---
             ui.vertical_centered(|ui| {
                 let panel_width = ui.available_width() - 40.0;
