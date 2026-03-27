@@ -656,13 +656,13 @@ impl eframe::App for ScoreboardApp {
                                     _ => "th",
                                 };
                                 let rank_str = format!("{}{}", p.id.to_string(), ordinal);
-                                self.ui_3d_card(ui, &rank_str, egui::vec2(130.0, 40.0), 18.0, egui::Color32::from_rgb(200, 150, 80), None);
+                                self.ui_3d_card(ui, &rank_str, egui::vec2(90.0, 360.0), 18.0, egui::Color32::from_rgb(200, 150, 80), None);
                             }
                             ui.end_row();
 
                             // --- 名前と所属・学年（統合） ---
                             for p in &players {
-                                self.ui_3d_player_info_card(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), egui::vec2(130.0, 180.0), None);
+                                self.ui_3d_player_info_card(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), egui::vec2(90.0, 360.0), None);
                             }
                             ui.end_row();
 
@@ -671,7 +671,7 @@ impl eframe::App for ScoreboardApp {
                             for p in &players {
                                 let score_str = display_statuses[&p.id].score.to_string();
                                 let change = self.last_change_times.get(&p.id).cloned();
-                                self.ui_3d_card(ui, &score_str, egui::vec2(130.0, 80.0), 45.0, egui::Color32::from_rgb(40, 80, 120), change);
+                                self.ui_3d_card(ui, &score_str, egui::vec2(90.0, 360.0), 45.0, egui::Color32::from_rgb(40, 80, 120), change);
                             }
                             ui.end_row();
 
@@ -679,7 +679,7 @@ impl eframe::App for ScoreboardApp {
                             // ui.label("CORRECT");
                             for p in &players {
                                 let val = display_statuses[&p.id].correct_count.to_string();
-                                self.ui_3d_card(ui, &val, egui::vec2(130.0, 40.0), 20.0, egui::Color32::from_rgb(40, 100, 40), None);
+                                self.ui_3d_card(ui, &val, egui::vec2(90.0, 360.0), 20.0, egui::Color32::from_rgb(40, 100, 40), None);
                             }
                             ui.end_row();
 
@@ -687,7 +687,7 @@ impl eframe::App for ScoreboardApp {
                             // ui.label("WRONG");
                             for p in &players {
                                 let val = display_statuses[&p.id].wrong_count.to_string();
-                                self.ui_3d_card(ui, &val, egui::vec2(130.0, 40.0), 20.0, egui::Color32::from_rgb(120, 40, 40), None);
+                                self.ui_3d_card(ui, &val, egui::vec2(90.0, 360.0), 20.0, egui::Color32::from_rgb(120, 40, 40), None);
                             }
                             ui.end_row();
                         });
