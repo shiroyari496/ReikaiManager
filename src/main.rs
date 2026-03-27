@@ -324,15 +324,13 @@ impl ScoreboardApp {
                     // --- 1R順位 行 ---
                     ui.label(egui::RichText::new("1R Rank").size(header_size));
                     for p in players {
-                        let rank_str = p.round1_rank.map_or("--".to_string(), |r| {
-                            let ordinal = match r % 10 {
-                                1 if r % 100 != 11 => "st",
-                                2 if r % 100 != 12 => "nd",
-                                3 if r % 100 != 13 => "rd",
-                                _ => "th",
-                            };
-                            format!("ID:{} {}{}", p.id, r, ordinal)
-                        });
+                        let ordinal = match p.id % 10 {
+                            1 if p.id % 100 != 11 => "st",
+                            2 if p.id % 100 != 12 => "nd",
+                            3 if p.id % 100 != 13 => "rd",
+                            _ => "th",
+                        };
+                        let rank_str = format!("{}{}", p.id.to_string(), ordinal);
                         ui.label(egui::RichText::new(rank_str).size(body_size).strong());
                     }
                     ui.end_row();
@@ -505,16 +503,14 @@ impl eframe::App for ScoreboardApp {
                         .show(ui, |ui| {
                             // --- 1R順位行 ---
                             for p in &players {
-                                let rank_str = p.round1_rank.map_or("--".to_string(), |r| {
-                                    let ordinal = match r % 10 {
-                                        1 if r % 100 != 11 => "st",
-                                        2 if r % 100 != 12 => "nd",
-                                        3 if r % 100 != 13 => "rd",
-                                        _ => "th",
-                                    };
-                                    format!("ID:{} {}{}", p.id, r, ordinal)
-                                });
-                                self.ui_3d_card(ui, &rank_str, egui::vec2(130.0, 30.0), 14.0, egui::Color32::from_rgb(200, 150, 80), None);
+                                let ordinal = match p.id % 10 {
+                                    1 if p.id % 100 != 11 => "st",
+                                    2 if p.id % 100 != 12 => "nd",
+                                    3 if p.id % 100 != 13 => "rd",
+                                    _ => "th",
+                                };
+                                let rank_str = format!("{}{}", p.id.to_string(), ordinal);
+                                self.ui_3d_card(ui, &rank_str, egui::vec2(130.0, 40.0), 18.0, egui::Color32::from_rgb(200, 150, 80), None);
                             }
                             ui.end_row();
 

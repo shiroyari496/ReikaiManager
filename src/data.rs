@@ -11,7 +11,6 @@ pub struct Player {
     pub name: String,
     pub affiliation: Option<String>,
     pub grade: Option<String>,
-    pub round1_rank: Option<u32>,
 }
 
 // --- CSV読み込み用 ---
@@ -21,7 +20,6 @@ pub struct PlayerRow {
     pub name: String,
     pub affiliation: Option<String>,
     pub grade: Option<String>,
-    pub round1_rank: Option<u32>,
 }
 
 impl From<PlayerRow> for Player {
@@ -31,7 +29,6 @@ impl From<PlayerRow> for Player {
             name: row.name,
             affiliation: row.affiliation,
             grade: row.grade,
-            round1_rank: row.round1_rank,
         }
     }
 }
