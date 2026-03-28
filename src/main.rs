@@ -233,19 +233,16 @@ impl ScoreboardApp {
         ui: &mut egui::Ui, 
         text: &str, 
         size: egui::Vec2, 
-        font_size: f32,
+        _font_size: f32, // 未使用のためプレフィックス追加
         color: egui::Color32,
         marker_size: f32,
         change_time: Option<std::time::Instant>
     ) {
+        // --- アニメーション計算 (0.0 ～ PI) ---
         let t = change_time.map_or(0.0, |inst| {
             let elapsed = inst.elapsed().as_secs_f32();
-            let duration = 0.6;
-            if elapsed < duration {
-                (1.0 - (elapsed / duration * std::f32::consts::PI).cos()) / 2.0
-            } else { 0.0 }
+            (1.0 - (elapsed.min(0.6) / 0.6 * std::f32::consts::PI).cos()) / 2.0
         });
-
         let angle = t * std::f32::consts::PI;
         let cos_a = angle.cos();
         let sin_a = angle.sin();
@@ -253,62 +250,52 @@ impl ScoreboardApp {
         let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
         let painter = ui.painter();
         let center = rect.center();
-        
-        // 回転による横幅の圧縮（最小値を設けて厚みを見せる）
-        let hw = size.x / 2.0 * cos_a.abs().max(0.05); 
-        let hh = size.y / 2.0;
-        
-        // 厚みの設定
-        let thickness = 8.0 * sin_a.abs(); 
-        let off = if cos_a > 0.0 { thickness } else { -thickness };
 
-        let top = center.y - hh;
-        let bottom = center.y + hh;
+        // パースの強さ（0.0～0.3程度が自然）
+        let perspective_factor = 0.2 * sin_a.abs(); 
+        
+        let hw = size.x / 2.0 * cos_a.abs().max(0.05);
+        let hh = size.y / 2.0;
+
+        // 座標の定義 (マーカー描画等で使用)
         let left = center.x - hw;
         let right = center.x + hw;
+        let top = center.y - hh;
+        let bottom = center.y + hh;
 
-        // 1. 側面の描画（厚み部分：少し暗い色にする）
-        let side_color = egui::Color32::from_rgb(
-            color.r().saturating_sub(40),
-            color.g().saturating_sub(40),
-            color.b().saturating_sub(40),
-        );
-        
+        // 左右の「高さ」を cos_a の正負（表裏）に応じて変化させる
+        let left_h_scale  = 1.0 + (perspective_factor * if cos_a >= 0.0 { -1.0 } else { 1.0 });
+        let right_h_scale = 1.0 + (perspective_factor * if cos_a >= 0.0 { 1.0 } else { -1.0 });
+
+        let p1 = egui::pos2(left, center.y - hh * left_h_scale);  // 左上
+        let p2 = egui::pos2(right, center.y - hh * right_h_scale); // 右上
+        let p3 = egui::pos2(right, center.y + hh * right_h_scale); // 右下
+        let p4 = egui::pos2(left, center.y + hh * left_h_scale);  // 左下
+
+        // 1. 厚みの描画 (簡易版)
+        let off = 10.0 * sin_a; 
+        let side_color: egui::Color32 = color.linear_multiply(0.7).into(); // 少し暗く
         painter.add(egui::Shape::convex_polygon(
-            vec![
-                egui::pos2(right, top),
-                egui::pos2(right + off, top + 2.0),
-                egui::pos2(right + off, bottom - 2.0),
-                egui::pos2(right, bottom),
-            ],
+            vec![p2, egui::pos2(p2.x + off, p2.y + 2.0), egui::pos2(p3.x + off, p3.y - 2.0), p3],
             side_color,
             egui::Stroke::NONE,
         ));
 
-        // 2. メインの板（表面）
+        // 2. メインの板（台形）
         painter.add(egui::Shape::convex_polygon(
-            vec![
-                egui::pos2(left, top),
-                egui::pos2(right, top),
-                egui::pos2(right, bottom),
-                egui::pos2(left, bottom),
-            ],
+            vec![p1, p2, p3, p4],
             color,
-            egui::Stroke::new(2.0, egui::Color32::WHITE), // 白い縁取り
+            egui::Stroke::new(2.0, egui::Color32::WHITE),
         ));
 
-        // 3. 四隅マーカー（重心がカードの角）
+        // 3. 四隅マーカー
         let marker_half = marker_size / 2.0;
-        let marker_horiz = marker_half * cos_a.abs().max(0.05); // 角度に合わせて横方向に自然に圧縮
+        let marker_horiz = marker_half * cos_a.abs().max(0.05); // 角度に合わせて横方向に圧縮
         let marker_vert = marker_half;
         let marker_color = egui::Color32::from_rgb(240, 240, 0);
 
-        let corners = [
-            egui::pos2(left, top),
-            egui::pos2(right, top),
-            egui::pos2(right, bottom),
-            egui::pos2(left, bottom),
-        ];
+        // 台形の頂点に合わせてマーカーを配置
+        let corners = [p1, p2, p3, p4];
 
         for c in corners {
             painter.add(egui::Shape::convex_polygon(
@@ -323,13 +310,13 @@ impl ScoreboardApp {
             ));
         }
 
-        // 4. テキスト描画
+        // 4. テキスト描画 (中心付近に配置)
         if cos_a.abs() > 0.3 {
             painter.text(
                 center,
                 egui::Align2::CENTER_CENTER,
                 text,
-                egui::FontId::proportional(font_size * cos_a.abs()),
+                egui::FontId::proportional(20.0 * cos_a.abs()),
                 egui::Color32::WHITE,
             );
         }
