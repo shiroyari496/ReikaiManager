@@ -230,8 +230,8 @@ impl ScoreboardApp {
     ) {
         let t = change_time.map_or(0.0, |inst| {
             let elapsed = inst.elapsed().as_secs_f32();
-            // 0.6秒で180度回転する
-            (elapsed.min(0.6) / 0.6 * std::f32::consts::FRAC_PI_2).sin()
+            // 0.8秒で180度回転する
+            (elapsed.min(0.8) / 0.8 * std::f32::consts::FRAC_PI_2).sin()
         });
 
         let angle = t * std::f32::consts::PI;
@@ -334,8 +334,8 @@ impl ScoreboardApp {
     ) {
         let t = change_time.map_or(0.0, |inst| {
             let elapsed = inst.elapsed().as_secs_f32();
-            // 0.6秒で180度回転する
-            (elapsed.min(0.6) / 0.6 * std::f32::consts::FRAC_PI_2).sin()
+            // 0.8秒で180度回転する
+            (elapsed.min(0.8) / 0.8 * std::f32::consts::FRAC_PI_2).sin()
         });
 
         let angle = t * std::f32::consts::PI;
@@ -670,7 +670,7 @@ impl eframe::App for ScoreboardApp {
                     
                     // 3Dモードなら問題文も3Dカード化
                     if self.is_3d_mode {
-                        self.ui_3d_card(ui, &q_label, 22.0, egui::vec2(panel_width, 60.0), egui::Color32::from_rgb(40, 40, 50), 8.0, egui::Color32::from_rgb(240, 240, 0), None);
+                        self.ui_3d_card(ui, &q_label, 22.0, egui::vec2(panel_width, 60.0), egui::Color32::from_rgb(40, 40, 50), 16.0, egui::Color32::from_rgb(0, 240, 240), None);
                     } else {
                         ui.group(|ui| {
                             ui.set_width(panel_width);
@@ -693,20 +693,20 @@ impl eframe::App for ScoreboardApp {
                         let available_width = ui.available_width();
                         let player_count = players.len().max(1);
                         let tile_width = 130.0;
-                        
+
                         // 必要な幅を計算 (タイル幅 × プレイヤー数 + 間隔 × (プレイヤー数-1))
                         let total_tiles_width = player_count as f32 * tile_width;
-                        let default_spacing_x = 15.0;
-                        
+                        let default_spacing_x = 5.0;
+
                         // スペースが不足している場合は間隔を縮小、余裕がある場合はデフォルト間隔
                         let spacing_x = if total_tiles_width + default_spacing_x * (player_count - 1).max(1) as f32 > available_width {
                             ((available_width - total_tiles_width) / (player_count - 1).max(1) as f32).max(5.0)
                         } else {
                             default_spacing_x
                         };
-                        
-                        let spacing_y = 15.0;
-                        
+
+                        let spacing_y = 5.0;
+
                         egui::Grid::new("3d_grid_extended")
                             .spacing([spacing_x, spacing_y])
                             .show(ui, |ui| {
@@ -725,12 +725,11 @@ impl eframe::App for ScoreboardApp {
 
                                 // --- 名前と所属・学年（統合） ---
                                 for p in &players {
-                                    self.ui_3d_player_info_card(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), 40.0, 20.0, egui::vec2(90.0, 360.0), egui::Color32::from_rgb(60, 60, 80), 0.0, egui::Color32::from_rgb(240, 240, 0), None);
+                                    self.ui_3d_player_info_card(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), 40.0, 20.0, egui::vec2(90.0, 400.0), egui::Color32::from_rgb(60, 60, 80), 0.0, egui::Color32::from_rgb(240, 240, 0), None);
                                 }
                                 ui.end_row();
 
                                 // --- スコア行（アニメーション付き） ---
-                                // ui.label(egui::RichText::new("SCORE").color(egui::Color32::LIGHT_BLUE).strong());
                                 for p in &players {
                                     let score_str = display_statuses[&p.id].score.to_string();
                                     let change = self.last_change_times.get(&p.id).cloned();
@@ -738,19 +737,23 @@ impl eframe::App for ScoreboardApp {
                                 }
                                 ui.end_row();
 
-                                // --- 正解数 ---
-                                // ui.label("CORRECT");
+                                // --- 正答数と誤答数を横並びに配置 ---
                                 for p in &players {
-                                    let val = display_statuses[&p.id].correct_count.to_string();
-                                    self.ui_3d_card(ui, &val, 20.0, egui::vec2(90.0, 30.0), egui::Color32::from_rgb(40, 100, 40), 0.0, egui::Color32::from_rgb(240, 240, 0), None);
-                                }
-                                ui.end_row();
+                                    // 1つのセルの中で水平に並べる
+                                    ui.horizontal(|ui| {
+                                        let spacing_between_cw = spacing_x / 2.0;
+                                        ui.spacing_mut().item_spacing.x = spacing_between_cw;
 
-                                // --- 誤答数 ---
-                                // ui.label("WRONG");
-                                for p in &players {
-                                    let val = display_statuses[&p.id].wrong_count.to_string();
-                                    self.ui_3d_card(ui, &val, 20.0, egui::vec2(90.0, 30.0), egui::Color32::from_rgb(120, 40, 40), 0.0, egui::Color32::from_rgb(240, 240, 0), None);
+                                        let correct_val = display_statuses[&p.id].correct_count.to_string();
+                                        let wrong_val = display_statuses[&p.id].wrong_count.to_string();
+
+                                        let half_size = egui::vec2((90.0-spacing_between_cw)/2.0, 30.0);
+
+                                        // 正答数
+                                        self.ui_3d_card(ui, &correct_val, 20.0, half_size, egui::Color32::from_rgb(40, 100, 40), 0.0, egui::Color32::from_rgb(240, 240, 0), None);
+                                        // 誤答数
+                                        self.ui_3d_card(ui, &wrong_val, 20.0, half_size, egui::Color32::from_rgb(120, 40, 40), 0.0, egui::Color32::from_rgb(240, 240, 0), None);
+                                    });
                                 }
                                 ui.end_row();
                             });
