@@ -296,7 +296,33 @@ impl ScoreboardApp {
             egui::Stroke::new(2.0, egui::Color32::WHITE), // 白い縁取り
         ));
 
-        // 3. テキスト描画
+        // 3. 四隅マーカー（重心がカードの角）
+        let marker_half = 2.5;
+        let marker_horiz = marker_half * cos_a.abs().max(0.05); // 角度に合わせて横方向に自然に圧縮
+        let marker_vert = marker_half;
+        let marker_color = egui::Color32::from_rgb(240, 240, 240);
+
+        let corners = [
+            egui::pos2(left, top),
+            egui::pos2(right, top),
+            egui::pos2(right, bottom),
+            egui::pos2(left, bottom),
+        ];
+
+        for c in corners {
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    egui::pos2(c.x - marker_horiz, c.y - marker_vert),
+                    egui::pos2(c.x + marker_horiz, c.y - marker_vert),
+                    egui::pos2(c.x + marker_horiz, c.y + marker_vert),
+                    egui::pos2(c.x - marker_horiz, c.y + marker_vert),
+                ],
+                marker_color,
+                egui::Stroke::new(1.0, egui::Color32::WHITE),
+            ));
+        }
+
+        // 4. テキスト描画
         if cos_a.abs() > 0.3 {
             painter.text(
                 center,
@@ -374,6 +400,32 @@ impl ScoreboardApp {
             color,
             egui::Stroke::new(2.0, egui::Color32::WHITE),
         ));
+
+        // 四隅マーカー（重心がカードの角）
+        let marker_half = 2.5;
+        let marker_horiz = marker_half * cos_a.abs().max(0.05);
+        let marker_vert = marker_half;
+        let marker_color = egui::Color32::from_rgb(230, 230, 230);
+
+        let corners = [
+            egui::pos2(left, top),
+            egui::pos2(right, top),
+            egui::pos2(right, bottom),
+            egui::pos2(left, bottom),
+        ];
+
+        for c in corners {
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    egui::pos2(c.x - marker_horiz, c.y - marker_vert),
+                    egui::pos2(c.x + marker_horiz, c.y - marker_vert),
+                    egui::pos2(c.x + marker_horiz, c.y + marker_vert),
+                    egui::pos2(c.x - marker_horiz, c.y + marker_vert),
+                ],
+                marker_color,
+                egui::Stroke::new(1.0, egui::Color32::WHITE),
+            ));
+        }
 
         // テキスト描画（縦書き - 1文字ごとに改行）
         if cos_a.abs() > 0.3 {
