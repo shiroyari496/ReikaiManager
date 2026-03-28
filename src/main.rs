@@ -235,6 +235,7 @@ impl ScoreboardApp {
         size: egui::Vec2, 
         font_size: f32,
         color: egui::Color32,
+        marker_size: f32,
         change_time: Option<std::time::Instant>
     ) {
         let t = change_time.map_or(0.0, |inst| {
@@ -297,10 +298,10 @@ impl ScoreboardApp {
         ));
 
         // 3. 四隅マーカー（重心がカードの角）
-        let marker_half = 2.5;
+        let marker_half = marker_size / 2.0;
         let marker_horiz = marker_half * cos_a.abs().max(0.05); // 角度に合わせて横方向に自然に圧縮
         let marker_vert = marker_half;
-        let marker_color = egui::Color32::from_rgb(240, 240, 240);
+        let marker_color = egui::Color32::from_rgb(240, 240, 0);
 
         let corners = [
             egui::pos2(left, top),
@@ -342,6 +343,9 @@ impl ScoreboardApp {
         affiliation: Option<&str>,
         grade: Option<&str>,
         size: egui::Vec2,
+        // font_size: f32,
+        color: egui::Color32,
+        marker_size: f32,
         change_time: Option<std::time::Instant>
     ) {
         let t = change_time.map_or(0.0, |inst| {
@@ -370,7 +374,7 @@ impl ScoreboardApp {
         let left = center.x - hw;
         let right = center.x + hw;
 
-        let color = egui::Color32::from_rgb(60, 60, 80);
+        let color =  color;
         let side_color = egui::Color32::from_rgb(
             color.r().saturating_sub(40),
             color.g().saturating_sub(40),
@@ -402,7 +406,7 @@ impl ScoreboardApp {
         ));
 
         // 四隅マーカー（重心がカードの角）
-        let marker_half = 2.5;
+        let marker_half = marker_size / 2.0;  // 表示しない
         let marker_horiz = marker_half * cos_a.abs().max(0.05);
         let marker_vert = marker_half;
         let marker_color = egui::Color32::from_rgb(230, 230, 230);
@@ -659,7 +663,7 @@ impl eframe::App for ScoreboardApp {
                 
                 // 3Dモードなら問題文も3Dカード化
                 if self.is_3d_mode {
-                    self.ui_3d_card(ui, &q_label, egui::vec2(panel_width, 60.0), 22.0, egui::Color32::from_rgb(40, 40, 50), None);
+                    self.ui_3d_card(ui, &q_label, egui::vec2(panel_width, 60.0), 22.0, egui::Color32::from_rgb(40, 40, 50), 2.0, None);
                 } else {
                     ui.group(|ui| {
                         ui.set_width(panel_width);
@@ -708,13 +712,13 @@ impl eframe::App for ScoreboardApp {
                                     _ => "th",
                                 };
                                 let rank_str = format!("{}{}", p.id.to_string(), ordinal);
-                                self.ui_3d_card(ui, &rank_str, egui::vec2(90.0, 45.0), 18.0, egui::Color32::from_rgb(200, 150, 80), None);
+                                self.ui_3d_card(ui, &rank_str, egui::vec2(90.0, 45.0), 18.0, egui::Color32::from_rgb(200, 150, 80), 0.0, None);
                             }
                             ui.end_row();
 
                             // --- 名前と所属・学年（統合） ---
                             for p in &players {
-                                self.ui_3d_player_info_card(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), egui::vec2(90.0, 360.0), None);
+                                self.ui_3d_player_info_card(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), egui::vec2(90.0, 360.0), egui::Color32::from_rgb(60, 60, 80), 0.0, None);
                             }
                             ui.end_row();
 
@@ -723,7 +727,7 @@ impl eframe::App for ScoreboardApp {
                             for p in &players {
                                 let score_str = display_statuses[&p.id].score.to_string();
                                 let change = self.last_change_times.get(&p.id).cloned();
-                                self.ui_3d_card(ui, &score_str, egui::vec2(90.0, 60.0), 45.0, egui::Color32::from_rgb(40, 80, 120), change);
+                                self.ui_3d_card(ui, &score_str, egui::vec2(90.0, 60.0), 45.0, egui::Color32::from_rgb(40, 80, 120), 8.0, change);
                             }
                             ui.end_row();
 
@@ -731,7 +735,7 @@ impl eframe::App for ScoreboardApp {
                             // ui.label("CORRECT");
                             for p in &players {
                                 let val = display_statuses[&p.id].correct_count.to_string();
-                                self.ui_3d_card(ui, &val, egui::vec2(90.0, 30.0), 20.0, egui::Color32::from_rgb(40, 100, 40), None);
+                                self.ui_3d_card(ui, &val, egui::vec2(90.0, 30.0), 20.0, egui::Color32::from_rgb(40, 100, 40), 0.0, None);
                             }
                             ui.end_row();
 
@@ -739,7 +743,7 @@ impl eframe::App for ScoreboardApp {
                             // ui.label("WRONG");
                             for p in &players {
                                 let val = display_statuses[&p.id].wrong_count.to_string();
-                                self.ui_3d_card(ui, &val, egui::vec2(90.0, 30.0), 20.0, egui::Color32::from_rgb(120, 40, 40), None);
+                                self.ui_3d_card(ui, &val, egui::vec2(90.0, 30.0), 20.0, egui::Color32::from_rgb(120, 40, 40), 0.0, None);
                             }
                             ui.end_row();
                         });
