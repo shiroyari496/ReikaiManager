@@ -98,6 +98,58 @@ impl QuizRule for NCorrectMWrong {
     }
 }
 
+/// Nupdownルール
+#[allow(dead_code)]
+pub struct Nupdown {
+    pub n: i32,
+}
+
+impl Nupdown {
+    #[allow(dead_code)]
+    pub fn new(n: i32) -> Self {
+        Self { n}
+    }
+}
+
+impl QuizRule for Nupdown {
+    fn apply(
+        &self,
+        player_statuses: &mut HashMap<PlayerId, PlayerStatus>,
+        player_events: &mut HashMap<PlayerId, Vec<Event>>,
+        question_status: &mut QuestionStatus,
+    ) {
+        for (player_id, events) in player_events.iter() {
+            let mut correct_count = 0;
+            let mut wrong_count = 0;
+            for event in events {
+                match event {
+                    Event::Buzz(_) => {}
+                    Event::Correct => {
+                        question_status.finished = true;
+                        correct_count += 1
+                    }
+                    Event::Wrong => {
+                        wrong_count += 1;
+                        correct_count = 0; // 間違えたら正解数リセット
+                    }
+                    _ => {}
+                }
+            }
+            let status = player_statuses
+                .entry(*player_id)
+                .or_insert_with(PlayerStatus::new);
+            status.score += correct_count;
+            status.correct_count += correct_count as u32;
+            status.wrong_count += wrong_count as u32;
+            if status.correct_count >= self.n as u32 {
+                status.is_winner = true;
+            }
+            if status.wrong_count >= self.m as u32 {
+                status.is_eliminated = true;
+            }
+        }
+    }
+}
 // UpDownルール、NbyNルール、PlusMinusルール、Freezeルール、
 // AttackSurvivalルールなどは実装時に追加してください
 
@@ -117,6 +169,9 @@ pub fn apply_selected_rule(
         }
         crate::data::RuleOption::NCorrectMWrong => {
             NCorrectMWrong::new(n, m).apply(player_statuses, player_events, question_status);
+        }
+        crate::data::RuleOption::Nupdown => {
+            Nupdown::new(n).apply(player_statuses, player_events, question_status);
         }
     }
 }
