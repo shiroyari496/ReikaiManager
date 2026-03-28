@@ -50,13 +50,13 @@ impl QuizRule for FreeBatting {
 /// N◯M×ルール
 #[allow(dead_code)]
 pub struct NCorrectMWrong {
-    pub n: i32,
-    pub m: i32,
+    pub n: u32,
+    pub m: u32,
 }
 
 impl NCorrectMWrong {
     #[allow(dead_code)]
-    pub fn new(n: i32, m: i32) -> Self {
+    pub fn new(n: u32, m: u32) -> Self {
         Self { n, m }
     }
 }
@@ -100,18 +100,19 @@ impl QuizRule for NCorrectMWrong {
 
 /// Nupdownルール
 #[allow(dead_code)]
-pub struct Nupdown {
-    pub n: i32,
+pub struct UpDown {
+    pub n: u32,
+    pub m: u32,
 }
 
-impl Nupdown {
+impl UpDown {
     #[allow(dead_code)]
-    pub fn new(n: i32) -> Self {
-        Self { n}
+    pub fn new(n: u32, m:u32) -> Self {
+        Self { n, m }
     }
 }
 
-impl QuizRule for Nupdown {
+impl QuizRule for UpDown {
     fn apply(
         &self,
         player_statuses: &mut HashMap<PlayerId, PlayerStatus>,
@@ -138,7 +139,7 @@ impl QuizRule for Nupdown {
             let status = player_statuses
                 .entry(*player_id)
                 .or_insert_with(PlayerStatus::new);
-            status.score += correct_count;
+            if wrong_count > 0 { status.score = 0; }
             status.correct_count += correct_count as u32;
             status.wrong_count += wrong_count as u32;
             if status.correct_count >= self.n as u32 {
@@ -150,15 +151,13 @@ impl QuizRule for Nupdown {
         }
     }
 }
-// UpDownルール、NbyNルール、PlusMinusルール、Freezeルール、
-// AttackSurvivalルールなどは実装時に追加してください
 
 /// ルール選択に基づいて適切なルールを適用する
 #[allow(dead_code)]
 pub fn apply_selected_rule(
     rule_option: &crate::data::RuleOption,
-    n: i32,
-    m: i32,
+    n: u32,
+    m: u32,
     player_statuses: &mut HashMap<PlayerId, PlayerStatus>,
     player_events: &mut HashMap<PlayerId, Vec<Event>>,
     question_status: &mut QuestionStatus,
@@ -170,8 +169,8 @@ pub fn apply_selected_rule(
         crate::data::RuleOption::NCorrectMWrong => {
             NCorrectMWrong::new(n, m).apply(player_statuses, player_events, question_status);
         }
-        crate::data::RuleOption::Nupdown => {
-            Nupdown::new(n).apply(player_statuses, player_events, question_status);
+        crate::data::RuleOption::UpDown => {
+            UpDown::new(n, m).apply(player_statuses, player_events, question_status);
         }
     }
 }

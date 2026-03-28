@@ -133,6 +133,7 @@ pub enum Event {
 pub enum RuleOption {
     FreeBatting,
     NCorrectMWrong,
+    UpDown,
 }
 
 impl RuleOption {
@@ -140,11 +141,12 @@ impl RuleOption {
         match self {
             Self::FreeBatting => "Free Batting",
             Self::NCorrectMWrong => "N Correct M Wrong",
+            Self::UpDown => "UpDown"
         }
     }
 
     pub fn all_options() -> &'static [RuleOption] {
-        &[Self::FreeBatting, Self::NCorrectMWrong]
+        &[Self::FreeBatting, Self::NCorrectMWrong, Self::UpDown]
     }
 }
 
@@ -163,8 +165,8 @@ pub struct SharedQuizState {
     pub questions: Vec<Question>,
     pub current_question: u32,
     pub rule_option: RuleOption,
-    pub n_correct: i32,
-    pub m_wrong: i32,
+    pub n_correct: u32,
+    pub m_wrong: u32,
 }
 
 impl SharedQuizState {

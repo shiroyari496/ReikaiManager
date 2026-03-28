@@ -5,7 +5,6 @@ mod terminal;
 
 use eframe::egui;
 use std::sync::{Arc, Mutex};
-// use std::thread;
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -15,7 +14,7 @@ use crate::terminal::{read_line, show_prompt, display_players, display_question,
                      handle_set_command, handle_answer_command};
 
 fn main() -> eframe::Result<()> {
-    // データ読み込み（エラーハンドリング付き）
+    // データ読み込み
     let players = load_players("data/players.csv")
         .expect("Failed to load players from data/players.csv");
     let questions = load_questions("data/questions.csv")
@@ -24,28 +23,18 @@ fn main() -> eframe::Result<()> {
     // 共有状態の作成
     let shared_state = Arc::new(Mutex::new(SharedQuizState::new(players.clone(), questions.clone())));
 
-    // // 【サブスレッド】ターミナル操作ロジック
-    // let state_for_thread = Arc::clone(&shared_state);
-    // thread::spawn(move || {
-    //     if let Err(e) = run_terminal_loop(state_for_thread, players, questions) {
-    //         eprintln!("Error in terminal loop: {}", e);
-    //     }
-    // });
-
-    // 【メインスレッド】GUI起動
+    // GUI起動
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([1000.0, 600.0]),
         ..Default::default()
     };
-
-    let shared_state_for_gui = Arc::clone(&shared_state); // GUI用にクローン
 
     eframe::run_native(
         "Quiz Scoreboard Display",
         native_options,
         Box::new(move |cc| {
             // ScoreboardApp::new に cc と shared_state を渡す
-            Box::new(ScoreboardApp::new(cc, shared_state_for_gui))
+            Box::new(ScoreboardApp::new(cc, shared_state))
         }),
     )
 }
@@ -160,7 +149,7 @@ fn run_terminal_loop(
             let n = shared_state.n_correct;
             let m = shared_state.m_wrong;
             drop(shared_state);  // ロックを明示的に解放
-            
+
             apply_selected_rule(&rule_option, n, m, &mut player_statuses, &mut player_events, &mut question_status);
         }
 
@@ -229,20 +218,22 @@ impl ScoreboardApp {
 
     /// 厚みと縁取りのある3Dカード描画
     fn ui_3d_card(
-        &self, 
-        ui: &mut egui::Ui, 
-        text: &str, 
-        size: egui::Vec2, 
-        _font_size: f32, // 未使用のためプレフィックス追加
+        &self,
+        ui: &mut egui::Ui,
+        text: &str,
+        font_size: f32,
+        size: egui::Vec2,
         color: egui::Color32,
         marker_size: f32,
-        change_time: Option<std::time::Instant>
+        marker_color: egui::Color32,
+        change_time: Option<std::time::Instant>,
     ) {
-        // --- アニメーション計算 (0.0 ～ PI) ---
         let t = change_time.map_or(0.0, |inst| {
             let elapsed = inst.elapsed().as_secs_f32();
-            (1.0 - (elapsed.min(0.6) / 0.6 * std::f32::consts::PI).cos()) / 2.0
+            // 0.6秒で180度回転する
+            (elapsed.min(0.6) / 0.6 * std::f32::consts::FRAC_PI_2).sin()
         });
+
         let angle = t * std::f32::consts::PI;
         let cos_a = angle.cos();
         let sin_a = angle.sin();
@@ -252,52 +243,56 @@ impl ScoreboardApp {
         let center = rect.center();
 
         // パースの強さ（0.0～0.3程度が自然）
-        let perspective_factor = 0.2 * sin_a.abs(); 
-        
-        let hw = size.x / 2.0 * cos_a.abs().max(0.05);
+        let perspective_factor = 0.2 * sin_a.abs();
+ 
+        let width_scale = cos_a.abs().max(0.01);
+        let hw = size.x / 2.0 * width_scale;
         let hh = size.y / 2.0;
 
-        // 座標の定義 (マーカー描画等で使用)
-        let left = center.x - hw;
-        let right = center.x + hw;
-        let top = center.y - hh;
-        let bottom = center.y + hh;
-
-        // 左右の「高さ」を cos_a の正負（表裏）に応じて変化させる
+        // 左右のパース計算
+        let side_sign = if cos_a >= 0.0 { 1.0 } else { -1.0 };
         let left_h_scale  = 1.0 + (perspective_factor * if cos_a >= 0.0 { -1.0 } else { 1.0 });
         let right_h_scale = 1.0 + (perspective_factor * if cos_a >= 0.0 { 1.0 } else { -1.0 });
 
-        let p1 = egui::pos2(left, center.y - hh * left_h_scale);  // 左上
-        let p2 = egui::pos2(right, center.y - hh * right_h_scale); // 右上
-        let p3 = egui::pos2(right, center.y + hh * right_h_scale); // 右下
-        let p4 = egui::pos2(left, center.y + hh * left_h_scale);  // 左下
+        let p1 = egui::pos2(center.x - hw, center.y - hh * left_h_scale); // 左上
+        let p2 = egui::pos2(center.x + hw, center.y - hh * right_h_scale); // 右上
+        let p3 = egui::pos2(center.x + hw, center.y + hh * right_h_scale); // 右下
+        let p4 = egui::pos2(center.x - hw, center.y + hh * left_h_scale); // 左下
 
-        // 1. 厚みの描画 (簡易版)
-        let off = 10.0 * sin_a; 
-        let side_color: egui::Color32 = color.linear_multiply(0.7).into(); // 少し暗く
-        painter.add(egui::Shape::convex_polygon(
-            vec![p2, egui::pos2(p2.x + off, p2.y + 2.0), egui::pos2(p3.x + off, p3.y - 2.0), p3],
-            side_color,
-            egui::Stroke::NONE,
-        ));
+        // --- 1. 厚みの描画 ---
+        if cos_a.abs() < 0.98 {
+            let thickness_val = 10.0 * sin_a.abs() * side_sign;
+            let side_color = color.linear_multiply(0.4); // 側面は暗く
 
-        // 2. メインの板（台形）
+            // カードの端(p2-p3 または p1-p4)から厚み分ずらしたポリゴンを描画
+            let (top, bot) = if cos_a >= 0.0 { (p2, p3) } else { (p1, p4) };
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    top,
+                    egui::pos2(top.x + thickness_val, top.y),
+                    egui::pos2(bot.x + thickness_val, bot.y),
+                    bot,
+                ],
+                side_color,
+                egui::Stroke::NONE,
+            ));
+        }
+
+        // --- 2. メインの板の描画 ---
+        let light_factor = 0.7 + 0.3 * cos_a.abs();
+        let current_color = color.linear_multiply(light_factor);
+
         painter.add(egui::Shape::convex_polygon(
             vec![p1, p2, p3, p4],
-            color,
-            egui::Stroke::new(2.0, egui::Color32::WHITE),
+            current_color,
+            egui::Stroke::new(1.0, egui::Color32::WHITE),
         ));
 
-        // 3. 四隅マーカー
-        let marker_half = marker_size / 2.0;
-        let marker_horiz = marker_half * cos_a.abs().max(0.05); // 角度に合わせて横方向に圧縮
-        let marker_vert = marker_half;
-        let marker_color = egui::Color32::from_rgb(240, 240, 0);
+        // --- 3. 四隅マーカーの描画 ---
+        let marker_horiz = (marker_size / 2.0) * cos_a.abs().max(0.05); // 角度に合わせて横方向に圧縮
+        let marker_vert = marker_size / 2.0;
 
-        // 台形の頂点に合わせてマーカーを配置
-        let corners = [p1, p2, p3, p4];
-
-        for c in corners {
+        for &c in &[p1, p2, p3, p4] {
             painter.add(egui::Shape::convex_polygon(
                 vec![
                     egui::pos2(c.x - marker_horiz, c.y - marker_vert),
@@ -310,37 +305,37 @@ impl ScoreboardApp {
             ));
         }
 
-        // 4. テキスト描画 (中心付近に配置)
+        // 4. テキスト描画
         if cos_a.abs() > 0.3 {
             painter.text(
                 center,
                 egui::Align2::CENTER_CENTER,
                 text,
-                egui::FontId::proportional(20.0 * cos_a.abs()),
+                egui::FontId::proportional(font_size * width_scale),
                 egui::Color32::WHITE,
             );
         }
     }
 
-    /// 名前（左手前）と所属・学年（右奥）を1つのボックスに配置した3Dカード描画
+    /// 左側に名前と右側に所属・学年を配置した厚みと縁取りのある3Dカード描画
     fn ui_3d_player_info_card(
         &self,
         ui: &mut egui::Ui,
         name: &str,
         affiliation: Option<&str>,
         grade: Option<&str>,
+        name_font_size: f32,
+        small_font_size: f32,
         size: egui::Vec2,
-        // font_size: f32,
         color: egui::Color32,
         marker_size: f32,
+        marker_color: egui::Color32,
         change_time: Option<std::time::Instant>
     ) {
         let t = change_time.map_or(0.0, |inst| {
             let elapsed = inst.elapsed().as_secs_f32();
-            let duration = 0.6;
-            if elapsed < duration {
-                (1.0 - (elapsed / duration * std::f32::consts::PI).cos()) / 2.0
-            } else { 0.0 }
+            // 0.6秒で180度回転する
+            (elapsed.min(0.6) / 0.6 * std::f32::consts::FRAC_PI_2).sin()
         });
 
         let angle = t * std::f32::consts::PI;
@@ -349,63 +344,59 @@ impl ScoreboardApp {
 
         let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
         let painter = ui.painter();
-        
-        let hw = size.x / 2.0 * cos_a.abs().max(0.05);
-        let hh = size.y / 2.0;
-        let thickness = 8.0 * sin_a.abs();
-        let off = if cos_a > 0.0 { thickness } else { -thickness };
-
         let center = rect.center();
-        let top = center.y - hh;
-        let bottom = center.y + hh;
-        let left = center.x - hw;
-        let right = center.x + hw;
 
-        let color =  color;
-        let side_color = egui::Color32::from_rgb(
-            color.r().saturating_sub(40),
-            color.g().saturating_sub(40),
-            color.b().saturating_sub(40),
-        );
+        // パースの強さ（0.0～0.3程度が自然）
+        let perspective_factor = 0.2 * sin_a.abs();
 
-        // 側面の描画
+        let width_scale = cos_a.abs().max(0.01);
+        let hw = size.x / 2.0 * width_scale;
+        let hh = size.y / 2.0;
+
+        // 左右のパース計算
+        let side_sign = if cos_a >= 0.0 { 1.0 } else { -1.0 };
+        let left_h_scale  = 1.0 + (perspective_factor * if cos_a >= 0.0 { -1.0 } else { 1.0 });
+        let right_h_scale = 1.0 + (perspective_factor * if cos_a >= 0.0 { 1.0 } else { -1.0 });
+
+        let p1 = egui::pos2(center.x - hw, center.y - hh * left_h_scale); // 左上
+        let p2 = egui::pos2(center.x + hw, center.y - hh * right_h_scale); // 右上
+        let p3 = egui::pos2(center.x + hw, center.y + hh * right_h_scale); // 右下
+        let p4 = egui::pos2(center.x - hw, center.y + hh * left_h_scale); // 左下
+
+         // --- 1. 厚みの描画 ---
+        if cos_a.abs() < 0.98 {
+            let thickness_val = 10.0 * sin_a.abs() * side_sign;
+            let side_color = color.linear_multiply(0.4); // 側面は暗く
+
+            // カードの端(p2-p3 または p1-p4)から厚み分ずらしたポリゴンを描画
+            let (top, bot) = if cos_a >= 0.0 { (p2, p3) } else { (p1, p4) };
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    top,
+                    egui::pos2(top.x + thickness_val, top.y),
+                    egui::pos2(bot.x + thickness_val, bot.y),
+                    bot,
+                ],
+                side_color,
+                egui::Stroke::NONE,
+            ));
+        }
+
+        // --- 2. メインの板の描画 ---
+        let light_factor = 0.7 + 0.3 * cos_a.abs();
+        let current_color = color.linear_multiply(light_factor);
+
         painter.add(egui::Shape::convex_polygon(
-            vec![
-                egui::pos2(right, top),
-                egui::pos2(right + off, top + 2.0),
-                egui::pos2(right + off, bottom - 2.0),
-                egui::pos2(right, bottom),
-            ],
-            side_color,
-            egui::Stroke::NONE,
+            vec![p1, p2, p3, p4],
+            current_color,
+            egui::Stroke::new(1.0, egui::Color32::WHITE),
         ));
 
-        // メインの板（表面）
-        painter.add(egui::Shape::convex_polygon(
-            vec![
-                egui::pos2(left, top),
-                egui::pos2(right, top),
-                egui::pos2(right, bottom),
-                egui::pos2(left, bottom),
-            ],
-            color,
-            egui::Stroke::new(2.0, egui::Color32::WHITE),
-        ));
+        // --- 3. 四隅マーカーの描画 ---
+        let marker_horiz = (marker_size / 2.0) * cos_a.abs().max(0.05); // 角度に合わせて横方向に圧縮
+        let marker_vert = marker_size / 2.0;
 
-        // 四隅マーカー（重心がカードの角）
-        let marker_half = marker_size / 2.0;  // 表示しない
-        let marker_horiz = marker_half * cos_a.abs().max(0.05);
-        let marker_vert = marker_half;
-        let marker_color = egui::Color32::from_rgb(230, 230, 230);
-
-        let corners = [
-            egui::pos2(left, top),
-            egui::pos2(right, top),
-            egui::pos2(right, bottom),
-            egui::pos2(left, bottom),
-        ];
-
-        for c in corners {
+        for &c in &[p1, p2, p3, p4] {
             painter.add(egui::Shape::convex_polygon(
                 vec![
                     egui::pos2(c.x - marker_horiz, c.y - marker_vert),
@@ -418,63 +409,88 @@ impl ScoreboardApp {
             ));
         }
 
-        // テキスト描画（縦書き - 1文字ごとに改行）
+        // 4. テキスト描画
         if cos_a.abs() > 0.3 {
             let visibility = cos_a.abs();
             let alpha = (visibility * 255.0) as u8;
             let text_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha);
 
-            let char_height_name = 24.0 * visibility;
-            let char_height_small = 8.0 * visibility;
+            let char_height_name = name_font_size * visibility;
+            let char_height_small = small_font_size * visibility;
 
-            // 左側: 名前を1文字ごとに改行（大きく）
+            // 左右のフォントサイズの合計に対する比率を計算
+            let total_font_weight = name_font_size + small_font_size;
+            let left_weight = name_font_size / total_font_weight;  // 名前側の占有率
+            let right_weight = small_font_size / total_font_weight; // 情報側の占有率
+
+            // カードの全幅 (2.0 * hw) を重みに基づいて分割
+            // 各エリアの中央座標を計算する
+            // 名前側 (左): 端から「名前エリアの半分」の位置
+            // 情報側 (右): 端から「名前エリア + 情報エリアの半分」の位置
+            let name_x_offset = (2.0 * hw) * (left_weight / 2.0);
+            let info_x_offset = (2.0 * hw) * (left_weight + right_weight / 2.0);
+
+            // center.x - hw (左端) を起点に座標を決定
+            // side_sign で回転時の反転を考慮
+            let left_edge = center.x - hw * side_sign;
+            let name_x = left_edge + name_x_offset * side_sign;
+            let info_x = left_edge + info_x_offset * side_sign;
+
+            // 左側: 名前
             let name_chars: Vec<char> = name.chars().collect();
             let total_name_height = name_chars.len() as f32 * char_height_name;
-            let mut y_offset = center.y - total_name_height / 2.0;
+            let mut y_name = center.y - total_name_height / 2.0;
             for ch in &name_chars {
-                let pos = egui::pos2(center.x - hw * 0.6, y_offset + char_height_name / 2.0);
+                let pos = egui::pos2(name_x, y_name + char_height_name / 2.0);
                 painter.text(
                     pos,
                     egui::Align2::CENTER_CENTER,
                     ch.to_string(),
-                    egui::FontId::proportional(60.0 * visibility),
+                    egui::FontId::proportional(char_height_name),
                     text_color,
                 );
-                y_offset += char_height_name;
+                y_name += char_height_name;
             }
 
-            // 右側上部: 所属を1文字ごとに改行（小さく）
-            let affiliation_str = affiliation.unwrap_or("-");
-            let aff_chars: Vec<char> = affiliation_str.chars().collect();
-            let total_aff_height = aff_chars.len() as f32 * char_height_small;
-            let mut y_offset = center.y - hh * 0.35 - total_aff_height / 2.0;
-            for ch in &aff_chars {
-                let pos = egui::pos2(center.x + hw * 0.6, y_offset + char_height_small / 2.0);
-                painter.text(
-                    pos,
-                    egui::Align2::CENTER_CENTER,
-                    ch.to_string(),
-                    egui::FontId::proportional(30.0 * visibility),
-                    text_color,
-                );
-                y_offset += char_height_small;
+            // 右側: 所属・学年
+
+            // カードの高さ hh に基づいて上下に振り分け
+            let section_gap = 4.0 * visibility;
+
+            // 右側上部: 所属
+            if let Some(aff_str) = affiliation {
+                let aff_chars: Vec<char> = aff_str.chars().collect();
+                let total_aff_height = aff_chars.len() as f32 * char_height_small;
+                let mut y_aff = center.y - section_gap - total_aff_height;
+                for ch in &aff_chars {
+                    let pos = egui::pos2(info_x, y_aff + char_height_small / 2.0);
+                    painter.text(
+                        pos,
+                        egui::Align2::CENTER_CENTER,
+                        ch.to_string(),
+                        egui::FontId::proportional(char_height_small),
+                        text_color,
+                    );
+                    y_aff += char_height_small;
+                }
             }
 
-            // 右側下部: 学年を1文字ごとに改行（小さく）
-            let grade_str = grade.unwrap_or("-");
-            let grade_chars: Vec<char> = grade_str.chars().collect();
-            let total_grade_height = grade_chars.len() as f32 * char_height_small;
-            let mut y_offset = center.y + hh * 0.1 - total_grade_height / 2.0;
-            for ch in &grade_chars {
-                let pos = egui::pos2(center.x + hw * 0.6, y_offset + char_height_small / 2.0);
-                painter.text(
-                    pos,
-                    egui::Align2::CENTER_CENTER,
-                    ch.to_string(),
-                    egui::FontId::proportional(30.0 * visibility),
-                    text_color,
-                );
-                y_offset += char_height_small;
+            // 右側下部: 学年
+            if let Some(grade_str) = grade {
+                let grade_chars: Vec<char> = grade_str.chars().collect();
+                // let total_grade_height = grade_chars.len() as f32 * char_height_small;
+                let mut y_grade = center.y + hh * 0.1;
+                for ch in &grade_chars {
+                    let pos = egui::pos2(info_x, y_grade + char_height_name / 2.0);
+                    painter.text(
+                        pos,
+                        egui::Align2::CENTER_CENTER,
+                        ch.to_string(),
+                        egui::FontId::proportional(char_height_small),
+                        text_color,
+                    );
+                    y_grade += char_height_small;
+                }
             }
         }
     }
@@ -600,145 +616,149 @@ impl eframe::App for ScoreboardApp {
             }
         }
 
+        let bg_color = egui::Color32::from_rgb(20, 20, 30);
+
         // 3. メインUIの描画
-        egui::CentralPanel::default().show(ctx, |ui| {
-            // --- コントロールパネル（ルール選択など） ---
-            ui.group(|ui| {
-                ui.horizontal(|ui| {
-                    // 3D モード トグル
-                    ui.checkbox(&mut self.is_3d_mode, "3D Mode");
-                    ui.separator();
-                    
-                    // ルール選択
-                    ui.label("Rule:");
-                    let mut current_rule = {
-                        let state = self.state.lock().unwrap();
-                        state.rule_option
-                    };
-                    
-                    let mut rule_changed = false;
-                    for &rule in RuleOption::all_options() {
-                        if ui.selectable_label(current_rule == rule, rule.label()).clicked() {
-                            current_rule = rule;
-                            rule_changed = true;
-                        }
-                    }
-                    
-                    if rule_changed {
-                        let mut state = self.state.lock().unwrap();
-                        state.rule_option = current_rule;
-                    }
-                    
-                    // N Correct M Wrong パラメータ編集
-                    if current_rule == RuleOption::NCorrectMWrong {
+        egui::CentralPanel::default()
+            .frame(egui::Frame::none().fill(bg_color))
+            .show(ctx, |ui| {
+                // --- コントロールパネル（ルール選択など） ---
+                ui.group(|ui| {
+                    ui.horizontal(|ui| {
+                        // 3D モード トグル
+                        ui.checkbox(&mut self.is_3d_mode, "3D Mode");
                         ui.separator();
-                        let mut state = self.state.lock().unwrap();
-                        ui.label("N Correct:");
-                        ui.add(egui::Slider::new(&mut state.n_correct, 1..=10).text(""));
-                        ui.label("M Wrong:");
-                        ui.add(egui::Slider::new(&mut state.m_wrong, 1..=10).text(""));
+                        
+                        // ルール選択
+                        ui.label("Rule:");
+                        let mut current_rule = {
+                            let state = self.state.lock().unwrap();
+                            state.rule_option
+                        };
+                        
+                        let mut rule_changed = false;
+                        for &rule in RuleOption::all_options() {
+                            if ui.selectable_label(current_rule == rule, rule.label()).clicked() {
+                                current_rule = rule;
+                                rule_changed = true;
+                            }
+                        }
+                        
+                        if rule_changed {
+                            let mut state = self.state.lock().unwrap();
+                            state.rule_option = current_rule;
+                        }
+                        
+                        // N Correct M Wrong パラメータ編集
+                        if current_rule == RuleOption::NCorrectMWrong || current_rule == RuleOption::UpDown {
+                            ui.separator();
+                            let mut state = self.state.lock().unwrap();
+                            ui.label("N Correct:");
+                            ui.add(egui::Slider::new(&mut state.n_correct, 1..=10).text(""));
+                            ui.label("M Wrong:");
+                            ui.add(egui::Slider::new(&mut state.m_wrong, 1..=10).text(""));
+                        }
+                    });
+                });
+
+                ui.add_space(10.0);
+
+                // --- 最上部に問題文パネル (3D/2D共通) ---
+                ui.vertical_centered(|ui| {
+                    let panel_width = ui.available_width() - 40.0;
+                    let q_label = format!("Q{}: {}", current_question, display_q_text);
+                    
+                    // 3Dモードなら問題文も3Dカード化
+                    if self.is_3d_mode {
+                        self.ui_3d_card(ui, &q_label, 22.0, egui::vec2(panel_width, 60.0), egui::Color32::from_rgb(40, 40, 50), 8.0, egui::Color32::from_rgb(240, 240, 0), None);
+                    } else {
+                        ui.group(|ui| {
+                            ui.set_width(panel_width);
+                            ui.heading(egui::RichText::new(q_label).size(30.0).strong());
+                        });
                     }
                 });
-            });
 
-            ui.add_space(10.0);
+                // ui.horizontal(|ui| {
+                //     ui.heading(format!("Question #{}", current_question));
+                //     ui.separator();
+                //     ui.checkbox(&mut self.is_3d_mode, "3D Mode");
+                // });
 
-            // --- 最上部に問題文パネル (3D/2D共通) ---
-            ui.vertical_centered(|ui| {
-                let panel_width = ui.available_width() - 40.0;
-                let q_label = format!("Q{}: {}", current_question, display_q_text);
-                
-                // 3Dモードなら問題文も3Dカード化
+                ui.add_space(20.0);
+
                 if self.is_3d_mode {
-                    self.ui_3d_card(ui, &q_label, egui::vec2(panel_width, 60.0), 22.0, egui::Color32::from_rgb(40, 40, 50), 2.0, None);
-                } else {
-                    ui.group(|ui| {
-                        ui.set_width(panel_width);
-                        ui.heading(egui::RichText::new(q_label).size(30.0).strong());
+                    egui::ScrollArea::both().show(ui, |ui| {
+                        // タイル間隔を自動調整
+                        let available_width = ui.available_width();
+                        let player_count = players.len().max(1);
+                        let tile_width = 130.0;
+                        
+                        // 必要な幅を計算 (タイル幅 × プレイヤー数 + 間隔 × (プレイヤー数-1))
+                        let total_tiles_width = player_count as f32 * tile_width;
+                        let default_spacing_x = 15.0;
+                        
+                        // スペースが不足している場合は間隔を縮小、余裕がある場合はデフォルト間隔
+                        let spacing_x = if total_tiles_width + default_spacing_x * (player_count - 1).max(1) as f32 > available_width {
+                            ((available_width - total_tiles_width) / (player_count - 1).max(1) as f32).max(5.0)
+                        } else {
+                            default_spacing_x
+                        };
+                        
+                        let spacing_y = 15.0;
+                        
+                        egui::Grid::new("3d_grid_extended")
+                            .spacing([spacing_x, spacing_y])
+                            .show(ui, |ui| {
+                                // --- 1R順位行 ---
+                                for p in &players {
+                                    let ordinal = match p.id % 10 {
+                                        1 if p.id % 100 != 11 => "st",
+                                        2 if p.id % 100 != 12 => "nd",
+                                        3 if p.id % 100 != 13 => "rd",
+                                        _ => "th",
+                                    };
+                                    let rank_str = format!("{}{}", p.id.to_string(), ordinal);
+                                    self.ui_3d_card(ui, &rank_str, 18.0, egui::vec2(90.0, 45.0), egui::Color32::from_rgb(200, 150, 80), 0.0, egui::Color32::from_rgb(240, 240, 0), None);
+                                }
+                                ui.end_row();
+
+                                // --- 名前と所属・学年（統合） ---
+                                for p in &players {
+                                    self.ui_3d_player_info_card(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), 40.0, 20.0, egui::vec2(90.0, 360.0), egui::Color32::from_rgb(60, 60, 80), 0.0, egui::Color32::from_rgb(240, 240, 0), None);
+                                }
+                                ui.end_row();
+
+                                // --- スコア行（アニメーション付き） ---
+                                // ui.label(egui::RichText::new("SCORE").color(egui::Color32::LIGHT_BLUE).strong());
+                                for p in &players {
+                                    let score_str = display_statuses[&p.id].score.to_string();
+                                    let change = self.last_change_times.get(&p.id).cloned();
+                                    self.ui_3d_card(ui, &score_str, 45.0, egui::vec2(90.0, 60.0), egui::Color32::from_rgb(40, 80, 120), 8.0, egui::Color32::from_rgb(240, 240, 0), change);
+                                }
+                                ui.end_row();
+
+                                // --- 正解数 ---
+                                // ui.label("CORRECT");
+                                for p in &players {
+                                    let val = display_statuses[&p.id].correct_count.to_string();
+                                    self.ui_3d_card(ui, &val, 20.0, egui::vec2(90.0, 30.0), egui::Color32::from_rgb(40, 100, 40), 0.0, egui::Color32::from_rgb(240, 240, 0), None);
+                                }
+                                ui.end_row();
+
+                                // --- 誤答数 ---
+                                // ui.label("WRONG");
+                                for p in &players {
+                                    let val = display_statuses[&p.id].wrong_count.to_string();
+                                    self.ui_3d_card(ui, &val, 20.0, egui::vec2(90.0, 30.0), egui::Color32::from_rgb(120, 40, 40), 0.0, egui::Color32::from_rgb(240, 240, 0), None);
+                                }
+                                ui.end_row();
+                            });
                     });
+                } else {
+                    self.render_classic_grid(ui, &players, &display_statuses);
                 }
             });
-
-            // ui.horizontal(|ui| {
-            //     ui.heading(format!("Question #{}", current_question));
-            //     ui.separator();
-            //     ui.checkbox(&mut self.is_3d_mode, "3D Mode");
-            // });
-
-            ui.add_space(20.0);
-
-            if self.is_3d_mode {
-                egui::ScrollArea::both().show(ui, |ui| {
-                    // タイル間隔を自動調整
-                    let available_width = ui.available_width();
-                    let player_count = players.len().max(1);
-                    let tile_width = 130.0;
-                    
-                    // 必要な幅を計算 (タイル幅 × プレイヤー数 + 間隔 × (プレイヤー数-1))
-                    let total_tiles_width = player_count as f32 * tile_width;
-                    let default_spacing_x = 15.0;
-                    
-                    // スペースが不足している場合は間隔を縮小、余裕がある場合はデフォルト間隔
-                    let spacing_x = if total_tiles_width + default_spacing_x * (player_count - 1).max(1) as f32 > available_width {
-                        ((available_width - total_tiles_width) / (player_count - 1).max(1) as f32).max(5.0)
-                    } else {
-                        default_spacing_x
-                    };
-                    
-                    let spacing_y = 15.0;
-                    
-                    egui::Grid::new("3d_grid_extended")
-                        .spacing([spacing_x, spacing_y])
-                        .show(ui, |ui| {
-                            // --- 1R順位行 ---
-                            for p in &players {
-                                let ordinal = match p.id % 10 {
-                                    1 if p.id % 100 != 11 => "st",
-                                    2 if p.id % 100 != 12 => "nd",
-                                    3 if p.id % 100 != 13 => "rd",
-                                    _ => "th",
-                                };
-                                let rank_str = format!("{}{}", p.id.to_string(), ordinal);
-                                self.ui_3d_card(ui, &rank_str, egui::vec2(90.0, 45.0), 18.0, egui::Color32::from_rgb(200, 150, 80), 0.0, None);
-                            }
-                            ui.end_row();
-
-                            // --- 名前と所属・学年（統合） ---
-                            for p in &players {
-                                self.ui_3d_player_info_card(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), egui::vec2(90.0, 360.0), egui::Color32::from_rgb(60, 60, 80), 0.0, None);
-                            }
-                            ui.end_row();
-
-                            // --- スコア行（アニメーション付き） ---
-                            // ui.label(egui::RichText::new("SCORE").color(egui::Color32::LIGHT_BLUE).strong());
-                            for p in &players {
-                                let score_str = display_statuses[&p.id].score.to_string();
-                                let change = self.last_change_times.get(&p.id).cloned();
-                                self.ui_3d_card(ui, &score_str, egui::vec2(90.0, 60.0), 45.0, egui::Color32::from_rgb(40, 80, 120), 8.0, change);
-                            }
-                            ui.end_row();
-
-                            // --- 正解数 ---
-                            // ui.label("CORRECT");
-                            for p in &players {
-                                let val = display_statuses[&p.id].correct_count.to_string();
-                                self.ui_3d_card(ui, &val, egui::vec2(90.0, 30.0), 20.0, egui::Color32::from_rgb(40, 100, 40), 0.0, None);
-                            }
-                            ui.end_row();
-
-                            // --- 誤答数 ---
-                            // ui.label("WRONG");
-                            for p in &players {
-                                let val = display_statuses[&p.id].wrong_count.to_string();
-                                self.ui_3d_card(ui, &val, egui::vec2(90.0, 30.0), 20.0, egui::Color32::from_rgb(120, 40, 40), 0.0, None);
-                            }
-                            ui.end_row();
-                        });
-                });
-            } else {
-                self.render_classic_grid(ui, &players, &display_statuses);
-            }
-        });
 
         // 4. コントロールパネル
         ctx.show_viewport_immediate(
