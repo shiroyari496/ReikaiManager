@@ -187,4 +187,17 @@ impl SharedQuizState {
             m_wrong: 3,
         }
     }
+
+    pub fn empty() -> Self {
+        Self {
+            players: Vec::new(),
+            display_statuses: HashMap::new(),
+            working_statuses: HashMap::new(),
+            questions: Vec::new(),
+            current_question: 0,
+            rule_option: RuleOption::default(),
+            n_correct: 7,
+            m_wrong: 3,
+        }
+    }
 }

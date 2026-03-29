@@ -14,16 +14,9 @@ use crate::terminal::{read_line, show_prompt, display_players, display_question,
                      handle_set_command, handle_answer_command};
 
 fn main() -> eframe::Result<()> {
-    // データ読み込み
-    let players = load_players("data/players.csv")
-        .expect("Failed to load players from data/players.csv");
-    let questions = load_questions("data/questions.csv")
-        .expect("Failed to load questions from data/questions.csv");
+    // GUI起動前に設定画面でパス・ルールを選択してから読み込む
+    let shared_state = Arc::new(Mutex::new(SharedQuizState::empty()));
 
-    // 共有状態の作成
-    let shared_state = Arc::new(Mutex::new(SharedQuizState::new(players.clone(), questions.clone())));
-
-    // GUI起動
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([1000.0, 600.0]),
         ..Default::default()
@@ -196,9 +189,34 @@ fn setup_custom_fonts(ctx: &egui::Context) {
 }
 
 // --- GUI アプリケーション構造体 ---
+struct AppConfig {
+    players_csv: String,
+    questions_csv: String,
+    log_csv: String,
+    rule_option: RuleOption,
+    n_correct: u32,
+    m_wrong: u32,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            players_csv: "data/players.csv".into(),
+            questions_csv: "data/questions.csv".into(),
+            log_csv: "data/log.csv".into(),
+            rule_option: RuleOption::default(),
+            n_correct: 7,
+            m_wrong: 3,
+        }
+    }
+}
+
 struct ScoreboardApp {
     state: Arc<Mutex<SharedQuizState>>,
     is_3d_mode: bool,
+    is_config_mode: bool,
+    config: AppConfig,
+    config_message: String,
     // 前回のスコアを保持して変更を検知する
     last_scores: HashMap<PlayerId, i32>,
     // 変更があった時刻を保持（アニメーション用）
@@ -211,9 +229,109 @@ impl ScoreboardApp {
         Self {
             state,
             is_3d_mode: true,
+            is_config_mode: true,
+            config: AppConfig::default(),
+            config_message: "設定を入力して [Load Data] を押してください".into(),
             last_scores: HashMap::new(),
             last_change_times: HashMap::new(),
         }
+    }
+
+    fn apply_config_to_state(&mut self, players: Vec<Player>, questions: Vec<Question>) {
+        let mut display_statuses = HashMap::new();
+        for p in &players {
+            display_statuses.insert(p.id, PlayerStatus::new());
+        }
+
+        let mut data = self.state.lock().unwrap();
+        data.players = players;
+        data.questions = questions;
+        data.display_statuses = display_statuses.clone();
+        data.working_statuses = display_statuses;
+        data.current_question = 1;
+        data.rule_option = self.config.rule_option;
+        data.n_correct = self.config.n_correct;
+        data.m_wrong = self.config.m_wrong;
+    }
+
+    fn render_config_ui(&mut self, ctx: &egui::Context) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("Quiz Startup Configuration");
+            ui.add_space(8.0);
+
+            ui.horizontal(|ui| {
+                ui.label("Players CSV");
+                ui.text_edit_singleline(&mut self.config.players_csv);
+            });
+            ui.horizontal(|ui| {
+                ui.label("Questions CSV");
+                ui.text_edit_singleline(&mut self.config.questions_csv);
+            });
+            ui.horizontal(|ui| {
+                ui.label("Log CSV");
+                ui.text_edit_singleline(&mut self.config.log_csv);
+            });
+
+            ui.add_space(8.0);
+            ui.label("Rule option");
+            for &rule in RuleOption::all_options() {
+                if ui
+                    .selectable_label(self.config.rule_option == rule, rule.label())
+                    .clicked()
+                {
+                    self.config.rule_option = rule;
+                }
+            }
+
+            if self.config.rule_option == RuleOption::NCorrectMWrong || self.config.rule_option == RuleOption::UpDown {
+                ui.horizontal(|ui| {
+                    ui.label("N Correct");
+                    ui.add(egui::Slider::new(&mut self.config.n_correct, 1..=20).text(""));
+                });
+                ui.horizontal(|ui| {
+                    ui.label("M Wrong");
+                    ui.add(egui::Slider::new(&mut self.config.m_wrong, 1..=20).text(""));
+                });
+            }
+
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                if ui.button("Load Data").clicked() {
+                    let players = load_players(&self.config.players_csv);
+                    let questions = load_questions(&self.config.questions_csv);
+
+                    match (players, questions) {
+                        (Ok(p), Ok(q)) => {
+                            if let Err(e) = write_log_head(&self.config.log_csv, &p) {
+                                self.config_message = format!("CSV読み込み成功、ただしログヘッダー書き込み失敗: {}", e);
+                            } else {
+                                self.config_message = "CSV読み込み成功。ゲームを開始できます。".into();
+                            }
+                            self.apply_config_to_state(p, q);
+                            self.is_config_mode = false;
+                        }
+                        (Err(e), _) => {
+                            self.config_message = format!("プレイヤー読み込みエラー: {}", e);
+                        }
+                        (_, Err(e)) => {
+                            self.config_message = format!("問題読み込みエラー: {}", e);
+                        }
+                    }
+                }
+
+                if ui.button("Reset to defaults").clicked() {
+                    self.config = AppConfig::default();
+                    self.config_message = "デフォルト設定にリセットしました。".into();
+                }
+            });
+
+            ui.add_space(8.0);
+            ui.label(egui::RichText::new(&self.config_message).color(egui::Color32::YELLOW));
+            ui.add_space(8.0);
+
+            ui.separator();
+            ui.label("設定完了後、画面上部のコントロールを使ってゲームを進めてください。");
+        });
     }
 
     /// 厚みと縁取りのある3Dカード描画
@@ -591,6 +709,12 @@ impl eframe::App for ScoreboardApp {
 
             // メインウィンドウ（表示側）の表示モードを切り替え
             ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!is_fullscreen));
+        }
+
+        if self.is_config_mode {
+            self.render_config_ui(ctx);
+            ctx.request_repaint();
+            return;
         }
 
         // 1. 共有データの取得
