@@ -596,25 +596,27 @@ impl eframe::App for ScoreboardApp {
         // F11 キーで全画面の切り替え
         if ctx.input(|i| i.key_pressed(egui::Key::F11)) {
             let is_fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
-
             // メインウィンドウ（表示側）の表示モードを切り替え
             ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!is_fullscreen));
         }
 
-        // 1. 共有データの取得
+        // 背景色
+        let bg_color = egui::Color32::from_rgb(20, 20, 30);
+
+        // 共有データの取得
         let (current_question, questions, players, display_statuses) = {
             let data = self.state.lock().unwrap();
             (data.current_question as usize, data.questions.clone(), data.players.clone(), data.display_statuses.clone())
         };
 
-        // メイン画面用の問題文ロジック (事故防止: indexが1以上なら「前回」を表示)
+        // メイン画面用の問題文 (indexが1以上なら「前回」を表示)
         let display_q_text = if current_question > 0 && current_question <= questions.len() {
             &questions[current_question - 1].text
         } else {
             "Waiting for Quiz to start..."
         };
 
-        // 2. スコア変更の検知とアニメーション更新
+        // スコア変更の検知とアニメーション更新
         for p in &players {
             let current_score = display_statuses[&p.id].score;
             let last_score = self.last_scores.entry(p.id).or_insert(current_score);
@@ -624,26 +626,24 @@ impl eframe::App for ScoreboardApp {
             }
         }
 
-        let bg_color = egui::Color32::from_rgb(20, 20, 30);
-
-        // 3. メインUIの描画
+        // メインUIの描画
         egui::CentralPanel::default()
             .frame(egui::Frame::none().fill(bg_color))
             .show(ctx, |ui| {
-                // --- コントロールパネル（ルール選択など） ---
+                // --- コントロールパネル（ルール選択など）削除予定 ---
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
                         // 3D モード トグル
                         ui.checkbox(&mut self.is_3d_mode, "3D Mode");
                         ui.separator();
-                        
+
                         // ルール選択
                         ui.label("Rule:");
                         let mut current_rule = {
                             let state = self.state.lock().unwrap();
                             state.rule_option
                         };
-                        
+
                         let mut rule_changed = false;
                         for &rule in RuleOption::all_options() {
                             if ui.selectable_label(current_rule == rule, rule.label()).clicked() {
@@ -651,12 +651,12 @@ impl eframe::App for ScoreboardApp {
                                 rule_changed = true;
                             }
                         }
-                        
+
                         if rule_changed {
                             let mut state = self.state.lock().unwrap();
                             state.rule_option = current_rule;
                         }
-                        
+
                         // N Correct M Wrong / NFreeze / NbyM / UpDown パラメータ編集
                         if current_rule == RuleOption::NCorrectMWrong
                             || current_rule == RuleOption::UpDown
@@ -675,31 +675,16 @@ impl eframe::App for ScoreboardApp {
 
                 ui.add_space(10.0);
 
-                // --- 最上部に問題文パネル (3D/2D共通) ---
-                ui.vertical_centered(|ui| {
-                    let panel_width = ui.available_width() - 40.0;
-                    let q_label = format!("Q{}: {}", current_question, display_q_text);
-                    
-                    // 3Dモードなら問題文も3Dカード化
-                    if self.is_3d_mode {
-                        self.ui_3d_card(ui, &q_label, 22.0, egui::vec2(panel_width, 60.0), egui::Color32::from_rgb(40, 40, 50), 16.0, egui::Color32::from_rgb(0, 240, 240), None);
-                    } else {
-                        ui.group(|ui| {
-                            ui.set_width(panel_width);
-                            ui.heading(egui::RichText::new(q_label).size(30.0).strong());
-                        });
-                    }
-                });
-
-                // ui.horizontal(|ui| {
-                //     ui.heading(format!("Question #{}", current_question));
-                //     ui.separator();
-                //     ui.checkbox(&mut self.is_3d_mode, "3D Mode");
-                // });
-
-                ui.add_space(20.0);
-
                 if self.is_3d_mode {
+                    // --- 問題文パネル ---
+                    ui.vertical_centered(|ui| {
+                        let panel_width = ui.available_width() - 40.0;
+                        let q_label = format!("Q{}: {}", current_question, display_q_text);
+                        self.ui_3d_card(ui, &q_label, 22.0, egui::vec2(panel_width, 60.0), egui::Color32::from_rgb(40, 40, 50), 16.0, egui::Color32::from_rgb(0, 240, 240), None);
+                    });
+
+                    ui.add_space(20.0);
+
                     egui::ScrollArea::both().show(ui, |ui| {
                         // タイル間隔を自動調整
                         let available_width = ui.available_width();
@@ -743,7 +728,7 @@ impl eframe::App for ScoreboardApp {
                                     } else {
                                         egui::Color32::from_rgb(60, 60, 80)
                                     };
-                                    self.ui_3d_player_info_card(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), 40.0, 20.0, egui::vec2(90.0, 400.0), name_card_color, 0.0, egui::Color32::from_rgb(240, 240, 0), None);
+                                    self.ui_3d_player_info_card(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), 40.0, 20.0, egui::vec2(90.0, 480.0), name_card_color, 0.0, egui::Color32::from_rgb(240, 240, 0), None);
                                 }
                                 ui.end_row();
 

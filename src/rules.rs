@@ -2,7 +2,6 @@ use crate::data::{PlayerId, PlayerStatus, Event, QuestionStatus};
 use std::collections::HashMap;
 
 /// クイズルールの trait
-#[allow(dead_code)]
 pub trait QuizRule {
     fn apply(
         &self,
@@ -12,8 +11,7 @@ pub trait QuizRule {
     );
 }
 
-/// ルール無し（全員が解答可能）
-#[allow(dead_code)]
+/// ルール無し
 pub struct FreeBatting;
 
 impl QuizRule for FreeBatting {
@@ -48,14 +46,12 @@ impl QuizRule for FreeBatting {
 }
 
 /// N◯M×ルール
-#[allow(dead_code)]
 pub struct NCorrectMWrong {
     pub n: u32,
     pub m: u32,
 }
 
 impl NCorrectMWrong {
-    #[allow(dead_code)]
     pub fn new(n: u32, m: u32) -> Self {
         Self { n, m }
     }
@@ -99,14 +95,12 @@ impl QuizRule for NCorrectMWrong {
 }
 
 /// NFreezeルール
-#[allow(dead_code)]
 pub struct NFreeze {
     pub n: u32,
     pub m: u32,
 }
 
 impl NFreeze {
-    #[allow(dead_code)]
     pub fn new(n: u32, m: u32) -> Self {
         Self { n, m }
     }
@@ -157,14 +151,12 @@ impl QuizRule for NFreeze {
 }
 
 /// NbyMルール
-#[allow(dead_code)]
 pub struct NbyM {
     pub n: u32,
     pub m: u32,
 }
 
 impl NbyM {
-    #[allow(dead_code)]
     pub fn new(n: u32, m: u32) -> Self {
         Self { n, m }
     }
@@ -220,14 +212,12 @@ impl QuizRule for NbyM {
 }
 
 /// NUpDownルール
-#[allow(dead_code)]
 pub struct UpDown {
     pub n: u32,
     pub m: u32,
 }
 
 impl UpDown {
-    #[allow(dead_code)]
     pub fn new(n: u32, m:u32) -> Self {
         Self { n, m }
     }
@@ -274,7 +264,6 @@ impl QuizRule for UpDown {
 }
 
 /// ルール選択に基づいて適切なルールを適用する
-#[allow(dead_code)]
 pub fn apply_selected_rule(
     rule_option: &crate::data::RuleOption,
     n: u32,

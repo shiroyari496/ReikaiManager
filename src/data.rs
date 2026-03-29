@@ -187,7 +187,7 @@ impl SharedQuizState {
             display_statuses,
             working_statuses,
             questions,
-            current_question: 1,
+            current_question: 0,
             rule_option: RuleOption::default(),
             n_correct: 7,
             m_wrong: 3,
