@@ -256,7 +256,7 @@ impl ScoreboardApp {
         data.questions = questions;
         data.display_statuses = display_statuses.clone();
         data.working_statuses = display_statuses;
-        data.current_question = 1;
+        data.current_question = 0;
         data.rule_option = self.config.rule_option;
         data.n_correct = self.config.n_correct;
         data.m_wrong = self.config.m_wrong;
