@@ -686,23 +686,12 @@ impl eframe::App for ScoreboardApp {
                     ui.add_space(20.0);
 
                     egui::ScrollArea::both().show(ui, |ui| {
-                        // タイル間隔を自動調整
+                        // タイル幅と間隔
                         let available_width = ui.available_width();
                         let player_count = players.len().max(1);
-                        let tile_width = 130.0;
-
-                        // 必要な幅を計算 (タイル幅 × プレイヤー数 + 間隔 × (プレイヤー数-1))
-                        let total_tiles_width = player_count as f32 * tile_width;
-                        let default_spacing_x = 5.0;
-
-                        // スペースが不足している場合は間隔を縮小、余裕がある場合はデフォルト間隔
-                        let spacing_x = if total_tiles_width + default_spacing_x * (player_count - 1).max(1) as f32 > available_width {
-                            ((available_width - total_tiles_width) / (player_count - 1).max(1) as f32).max(5.0)
-                        } else {
-                            default_spacing_x
-                        };
-
+                        let spacing_x = 5.0;
                         let spacing_y = 5.0;
+                        let tile_width = ((available_width/player_count as f32)-spacing_x).max(90.0);
 
                         egui::Grid::new("3d_grid_extended")
                             .spacing([spacing_x, spacing_y])
@@ -716,7 +705,7 @@ impl eframe::App for ScoreboardApp {
                                         _ => "th",
                                     };
                                     let rank_str = format!("{}{}", p.id.to_string(), ordinal);
-                                    self.ui_3d_card(ui, &rank_str, 18.0, egui::vec2(90.0, 45.0), egui::Color32::from_rgb(200, 150, 80), 0.0, egui::Color32::from_rgb(240, 240, 0), None);
+                                    self.ui_3d_card(ui, &rank_str, 18.0, egui::vec2(tile_width, 45.0), egui::Color32::from_rgb(200, 150, 80), 0.0, egui::Color32::from_rgb(240, 240, 0), None);
                                 }
                                 ui.end_row();
 
@@ -728,7 +717,7 @@ impl eframe::App for ScoreboardApp {
                                     } else {
                                         egui::Color32::from_rgb(60, 60, 80)
                                     };
-                                    self.ui_3d_player_info_card(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), 40.0, 20.0, egui::vec2(90.0, 480.0), name_card_color, 0.0, egui::Color32::from_rgb(240, 240, 0), None);
+                                    self.ui_3d_player_info_card(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), 40.0, 20.0, egui::vec2(tile_width, 350.0), name_card_color, 0.0, egui::Color32::from_rgb(240, 240, 0), None);
                                 }
                                 ui.end_row();
 
@@ -736,7 +725,7 @@ impl eframe::App for ScoreboardApp {
                                 for p in &players {
                                     let score_str = display_statuses[&p.id].score.to_string();
                                     let change = self.last_change_times.get(&p.id).cloned();
-                                    self.ui_3d_card(ui, &score_str, 45.0, egui::vec2(90.0, 60.0), egui::Color32::from_rgb(40, 80, 120), 8.0, egui::Color32::from_rgb(240, 240, 0), change);
+                                    self.ui_3d_card(ui, &score_str, 45.0, egui::vec2(tile_width, 60.0), egui::Color32::from_rgb(40, 80, 120), 8.0, egui::Color32::from_rgb(240, 240, 0), change);
                                 }
                                 ui.end_row();
 
@@ -750,7 +739,7 @@ impl eframe::App for ScoreboardApp {
                                         let correct_val = display_statuses[&p.id].correct_count.to_string();
                                         let wrong_val = display_statuses[&p.id].wrong_count.to_string();
 
-                                        let half_size = egui::vec2((90.0-spacing_between_cw)/2.0, 30.0);
+                                        let half_size = egui::vec2((tile_width-spacing_between_cw)/2.0, 30.0);
 
                                         // 正答数
                                         self.ui_3d_card(ui, &correct_val, 20.0, half_size, egui::Color32::from_rgb(40, 100, 40), 0.0, egui::Color32::from_rgb(240, 240, 0), None);
@@ -787,9 +776,9 @@ impl eframe::App for ScoreboardApp {
                         ui.label(egui::RichText::new("ON SCREEN (Previous):").color(egui::Color32::GOLD));
                         let prev_text = if data.current_question > 0 { &data.questions[data.current_question as usize - 1].text } else { "-" };
                         ui.label(prev_text);
-                        
+
                         ui.separator();
-                        
+
                         // これから出すもの（今回分）
                         ui.label(egui::RichText::new("NEXT UP (Current):").color(egui::Color32::LIGHT_BLUE));
                         let curr_idx = data.current_question as usize;
