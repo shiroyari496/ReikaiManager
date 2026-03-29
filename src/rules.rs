@@ -95,18 +95,17 @@ impl QuizRule for NCorrectMWrong {
 }
 
 /// NFreezeルール
-pub struct NFreeze {
+pub struct Freeze {
     pub n: u32,
-    pub m: u32,
 }
 
-impl NFreeze {
-    pub fn new(n: u32, m: u32) -> Self {
-        Self { n, m }
+impl Freeze {
+    pub fn new(n: u32) -> Self {
+        Self { n }
     }
 }
 
-impl QuizRule for NFreeze {
+impl QuizRule for Freeze {
     fn apply(
         &self,
         player_statuses: &mut HashMap<PlayerId, PlayerStatus>,
@@ -143,26 +142,23 @@ impl QuizRule for NFreeze {
             if status.correct_count >= self.n as u32 {
                 status.is_winner = true;
             }
-            if status.wrong_count >= self.m as u32 {
-                status.is_eliminated = true;
-            }
         }
     }
 }
 
 /// NbyMルール
-pub struct NbyM {
+pub struct NByM {
     pub n: u32,
     pub m: u32,
 }
 
-impl NbyM {
+impl NByM {
     pub fn new(n: u32, m: u32) -> Self {
         Self { n, m }
     }
 }
 
-impl QuizRule for NbyM {
+impl QuizRule for NByM {
     fn apply(
         &self,
         player_statuses: &mut HashMap<PlayerId, PlayerStatus>,
@@ -282,11 +278,11 @@ pub fn apply_selected_rule(
         crate::data::RuleOption::UpDown => {
             UpDown::new(n, m).apply(player_statuses, player_events, question_status);
         }
-        crate::data::RuleOption::NFreeze => {
-            NFreeze::new(n, m).apply(player_statuses, player_events, question_status);
+        crate::data::RuleOption::Freeze => {
+            Freeze::new(n).apply(player_statuses, player_events, question_status);
         }
-        crate::data::RuleOption::NbyM => {
-            NbyM::new(n, m).apply(player_statuses, player_events, question_status);
+        crate::data::RuleOption::NByM => {
+            NByM::new(n, m).apply(player_statuses, player_events, question_status);
         }
     }
 }

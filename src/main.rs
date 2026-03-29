@@ -239,7 +239,7 @@ impl ScoreboardApp {
             is_3d_mode: true,
             is_config_mode: true,
             config: AppConfig::default(),
-            config_message: "設定を入力して [Load Data] を押してください".into(),
+            config_message: "設定を入力して [Load Data] を押してください。".into(),
             last_scores: HashMap::new(),
             last_change_times: HashMap::new(),
         }
@@ -265,7 +265,8 @@ impl ScoreboardApp {
     fn render_config_ui(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Quiz Startup Configuration");
-            ui.add_space(8.0);
+
+            ui.separator();
 
             ui.horizontal(|ui| {
                 ui.label("Players CSV");
@@ -280,18 +281,25 @@ impl ScoreboardApp {
                 ui.text_edit_singleline(&mut self.config.log_csv);
             });
 
-            ui.add_space(8.0);
-            ui.label("Rule option");
-            for &rule in RuleOption::all_options() {
-                if ui
-                    .selectable_label(self.config.rule_option == rule, rule.label())
-                    .clicked()
-                {
-                    self.config.rule_option = rule;
-                }
-            }
+            ui.separator();
 
-            if self.config.rule_option == RuleOption::NCorrectMWrong || self.config.rule_option == RuleOption::UpDown {
+            ui.label("Rule option");
+            ui.horizontal( |ui| {
+                for &rule in RuleOption::all_options() {
+                    if ui
+                        .selectable_label(self.config.rule_option == rule, rule.label())
+                        .clicked()
+                    {
+                        self.config.rule_option = rule;
+                    }
+                }
+            });
+
+            if
+                self.config.rule_option == RuleOption::NCorrectMWrong ||
+                self.config.rule_option == RuleOption::UpDown ||
+                self.config.rule_option == RuleOption::NByM
+            {
                 ui.horizontal(|ui| {
                     ui.label("N Correct");
                     ui.add(egui::Slider::new(&mut self.config.n_correct, 1..=20).text(""));
@@ -301,44 +309,45 @@ impl ScoreboardApp {
                     ui.add(egui::Slider::new(&mut self.config.m_wrong, 1..=20).text(""));
                 });
             }
-
-            ui.add_space(12.0);
-            ui.horizontal(|ui| {
-                if ui.button("Load Data").clicked() {
-                    let players = load_players(&self.config.players_csv);
-                    let questions = load_questions(&self.config.questions_csv);
-
-                    match (players, questions) {
-                        (Ok(p), Ok(q)) => {
-                            if let Err(e) = write_log_head(&self.config.log_csv, &p) {
-                                self.config_message = format!("CSV読み込み成功、ただしログヘッダー書き込み失敗: {}", e);
-                            } else {
-                                self.config_message = "CSV読み込み成功。ゲームを開始できます。".into();
-                            }
-                            self.apply_config_to_state(p, q);
-                            self.is_config_mode = false;
-                        }
-                        (Err(e), _) => {
-                            self.config_message = format!("プレイヤー読み込みエラー: {}", e);
-                        }
-                        (_, Err(e)) => {
-                            self.config_message = format!("問題読み込みエラー: {}", e);
-                        }
-                    }
-                }
-
-                if ui.button("Reset to defaults").clicked() {
-                    self.config = AppConfig::default();
-                    self.config_message = "デフォルト設定にリセットしました。".into();
-                }
-            });
-
-            ui.add_space(8.0);
-            ui.label(egui::RichText::new(&self.config_message).color(egui::Color32::YELLOW));
-            ui.add_space(8.0);
+            if self.config.rule_option == RuleOption::Freeze {
+                ui.horizontal(|ui| {
+                    ui.label("N Correct");
+                    ui.add(egui::Slider::new(&mut self.config.n_correct, 1..=20).text(""));
+                });
+            }
 
             ui.separator();
-            ui.label("設定完了後、画面上部のコントロールを使ってゲームを進めてください。");
+
+            if ui.button("Load Data and Begin").clicked() {
+                let players = load_players(&self.config.players_csv);
+                let questions = load_questions(&self.config.questions_csv);
+                match (players, questions) {
+                    (Ok(p), Ok(q)) => {
+                        if let Err(e) = write_log_head(&self.config.log_csv, &p) {
+                            self.config_message = format!("CSV読み込み成功、ただしログヘッダー書き込み失敗: {}", e);
+                        } else {
+                            self.config_message = "CSV読み込み成功。ラウンドを開始します。".into();
+                        }
+                        self.apply_config_to_state(p, q);
+                        self.is_config_mode = false;
+                    }
+                    (Err(e), _) => {
+                        self.config_message = format!("プレイヤー読み込みエラー: {}", e);
+                    }
+                    (_, Err(e)) => {
+                        self.config_message = format!("問題読み込みエラー: {}", e);
+                    }
+                }
+            }
+
+            if ui.button("Reset to defaults").clicked() {
+                self.config = AppConfig::default();
+                self.config_message = "デフォルト設定にリセットしました。".into();
+            }
+
+            ui.separator();
+
+            ui.label(egui::RichText::new(&self.config_message));
         });
     }
 
@@ -781,11 +790,11 @@ impl eframe::App for ScoreboardApp {
                             state.rule_option = current_rule;
                         }
 
-                        // N Correct M Wrong / NFreeze / NbyM / UpDown パラメータ編集
+                        // N Correct M Wrong / Freeze / N By M / UpDown パラメータ編集
                         if current_rule == RuleOption::NCorrectMWrong
                             || current_rule == RuleOption::UpDown
-                            || current_rule == RuleOption::NFreeze
-                            || current_rule == RuleOption::NbyM
+                            || current_rule == RuleOption::Freeze
+                            || current_rule == RuleOption::NByM
                         {
                             ui.separator();
                             let mut state = self.state.lock().unwrap();

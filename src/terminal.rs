@@ -177,7 +177,7 @@ pub fn select_rule() -> Result<(RuleOption, i32, i32), String> {
             if idx < RuleOption::all_options().len() {
                 let selected_rule = RuleOption::all_options()[idx];
                 
-                if selected_rule == RuleOption::NCorrectMWrong || selected_rule == RuleOption::NFreeze || selected_rule == RuleOption::NbyM {
+                if selected_rule == RuleOption::NCorrectMWrong || selected_rule == RuleOption::Freeze || selected_rule == RuleOption::NByM {
                     let (n, m) = get_ncorrect_mwrong_params()?;
                     return Ok((selected_rule, n, m));
                 } else {

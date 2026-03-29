@@ -136,8 +136,8 @@ pub enum RuleOption {
     FreeBatting,
     NCorrectMWrong,
     UpDown,
-    NFreeze,
-    NbyM,
+    Freeze,
+    NByM,
 }
 
 impl RuleOption {
@@ -146,13 +146,13 @@ impl RuleOption {
             Self::FreeBatting => "Free Batting",
             Self::NCorrectMWrong => "N Correct M Wrong",
             Self::UpDown => "UpDown",
-            Self::NFreeze => "N Freeze",
-            Self::NbyM => "N by M",
+            Self::Freeze => "N Freeze",
+            Self::NByM => "N by M",
         }
     }
 
     pub fn all_options() -> &'static [RuleOption] {
-        &[Self::FreeBatting, Self::NCorrectMWrong, Self::UpDown, Self::NFreeze, Self::NbyM]
+        &[Self::FreeBatting, Self::NCorrectMWrong, Self::UpDown, Self::Freeze, Self::NByM]
     }
 }
 
@@ -176,6 +176,7 @@ pub struct SharedQuizState {
 }
 
 impl SharedQuizState {
+    #[allow(dead_code)]
     pub fn new(players: Vec<Player>, questions: Vec<Question>) -> Self {
         let mut display_statuses = HashMap::new();
         for p in &players {
