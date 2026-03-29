@@ -65,6 +65,13 @@ fn run_terminal_loop(
             state.lock().unwrap().current_question = q as u32;
         }
 
+        // Freeze カウントを進める (質問が進むごとに-1)
+        for status in player_statuses.values_mut() {
+            if status.freeze_count > 0 {
+                status.freeze_count -= 1;
+            }
+        }
+
         // 活動中のプレイヤーをフィルタリング
         let active_players: Vec<&Player> = players
             .iter()
@@ -72,6 +79,7 @@ fn run_terminal_loop(
                 let status = player_statuses.get(&p.id);
                 !status.map(|s| s.is_winner).unwrap_or(false)
                     && !status.map(|s| s.is_eliminated).unwrap_or(false)
+                    && status.map(|s| s.freeze_count).unwrap_or(0) == 0
                     && !status
                         .map(|s| s.frozen_until)
                         .flatten()
@@ -649,8 +657,12 @@ impl eframe::App for ScoreboardApp {
                             state.rule_option = current_rule;
                         }
                         
-                        // N Correct M Wrong パラメータ編集
-                        if current_rule == RuleOption::NCorrectMWrong || current_rule == RuleOption::UpDown {
+                        // N Correct M Wrong / NFreeze / NbyM / UpDown パラメータ編集
+                        if current_rule == RuleOption::NCorrectMWrong
+                            || current_rule == RuleOption::UpDown
+                            || current_rule == RuleOption::NFreeze
+                            || current_rule == RuleOption::NbyM
+                        {
                             ui.separator();
                             let mut state = self.state.lock().unwrap();
                             ui.label("N Correct:");
@@ -725,7 +737,13 @@ impl eframe::App for ScoreboardApp {
 
                                 // --- 名前と所属・学年（統合） ---
                                 for p in &players {
-                                    self.ui_3d_player_info_card(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), 40.0, 20.0, egui::vec2(90.0, 400.0), egui::Color32::from_rgb(60, 60, 80), 0.0, egui::Color32::from_rgb(240, 240, 0), None);
+                                    let is_frozen = display_statuses[&p.id].freeze_count > 0;
+                                    let name_card_color = if is_frozen {
+                                        egui::Color32::from_rgb(0, 200, 255)
+                                    } else {
+                                        egui::Color32::from_rgb(60, 60, 80)
+                                    };
+                                    self.ui_3d_player_info_card(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), 40.0, 20.0, egui::vec2(90.0, 400.0), name_card_color, 0.0, egui::Color32::from_rgb(240, 240, 0), None);
                                 }
                                 ui.end_row();
 
