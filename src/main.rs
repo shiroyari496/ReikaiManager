@@ -32,6 +32,7 @@ fn main() -> eframe::Result<()> {
     )
 }
 
+// ターミナルでの操作 削除予定
 #[allow(dead_code)]
 fn run_terminal_loop(
     state: Arc<Mutex<SharedQuizState>>,
@@ -198,6 +199,7 @@ fn setup_custom_fonts(ctx: &egui::Context) {
 
 // --- GUI アプリケーション構造体 ---
 struct AppConfig {
+    round_name: String,
     players_csv: String,
     questions_csv: String,
     log_csv: String,
@@ -209,6 +211,7 @@ struct AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
+            round_name: "Free Batting".into(),
             players_csv: "data/players.csv".into(),
             questions_csv: "data/questions.csv".into(),
             log_csv: "data/log.csv".into(),
@@ -221,7 +224,6 @@ impl Default for AppConfig {
 
 struct ScoreboardApp {
     state: Arc<Mutex<SharedQuizState>>,
-    is_3d_mode: bool,
     is_config_mode: bool,
     config: AppConfig,
     config_message: String,
@@ -236,7 +238,6 @@ impl ScoreboardApp {
         setup_custom_fonts(&cc.egui_ctx);
         Self {
             state,
-            is_3d_mode: true,
             is_config_mode: true,
             config: AppConfig::default(),
             config_message: "設定を入力して [Load Data] を押してください。".into(),
@@ -265,6 +266,13 @@ impl ScoreboardApp {
     fn render_config_ui(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Quiz Startup Configuration");
+
+            ui.separator();
+
+            ui.horizontal(|ui| {
+                ui.label("Round name");
+                ui.text_edit_singleline(&mut self.config.round_name);
+            });
 
             ui.separator();
 
@@ -629,93 +637,6 @@ impl ScoreboardApp {
             }
         }
     }
-
-    fn render_classic_grid(&mut self, ui: &mut egui::Ui, players: &[Player], statuses: &HashMap<PlayerId, PlayerStatus>) {
-        ui.heading(egui::RichText::new(format!("Question #{}", self.state.lock().unwrap().current_question)).size(40.0));
-        ui.add_space(20.0);
-
-        egui::ScrollArea::horizontal().show(ui, |ui| {
-            egui::Grid::new("score_grid")
-                .striped(true)
-                .spacing([30.0, 20.0])
-                .show(ui, |ui| {
-                    let header_size = 24.0;
-                    let body_size = 30.0;
-                    let score_size = 60.0;
-
-                    // --- 1R順位 行 ---
-                    ui.label(egui::RichText::new("1R Rank").size(header_size));
-                    for p in players {
-                        let ordinal = match p.id % 10 {
-                            1 if p.id % 100 != 11 => "st",
-                            2 if p.id % 100 != 12 => "nd",
-                            3 if p.id % 100 != 13 => "rd",
-                            _ => "th",
-                        };
-                        let rank_str = format!("{}{}", p.id.to_string(), ordinal);
-                        ui.label(egui::RichText::new(rank_str).size(body_size).strong());
-                    }
-                    ui.end_row();
-
-                    // --- Name 行 ---
-                    ui.label(egui::RichText::new("Name").size(header_size));
-                    for p in players {
-                        ui.label(egui::RichText::new(&p.name).size(body_size).strong());
-                    }
-                    ui.end_row();
-
-                    ui.label("Affiliation");
-                    for p in players {
-                        ui.label(p.affiliation.as_deref().unwrap_or("-"));
-                    }
-                    ui.end_row();
-
-                    ui.label("Grade");
-                    for p in players {
-                        ui.label(p.grade.as_deref().unwrap_or("-"));
-                    }
-                    ui.end_row();
-
-                    ui.end_row();
-                    ui.separator();
-                    for _ in players {
-                        ui.separator();
-                    }
-                    ui.end_row();
-
-                    // --- SCORE 行 ---
-                    ui.label(
-                        egui::RichText::new("SCORE")
-                            .strong()
-                            .size(header_size)
-                            .color(egui::Color32::LIGHT_BLUE),
-                    );
-                    for p in players {
-                        let s = &statuses[&p.id];
-                        ui.label(egui::RichText::new(s.score.to_string()).size(score_size).strong());
-                    }
-                    ui.end_row();
-
-                    ui.label("Correct (○)");
-                    for p in players {
-                        ui.label(
-                            egui::RichText::new(statuses[&p.id].correct_count.to_string())
-                                .color(egui::Color32::GREEN),
-                        );
-                    }
-                    ui.end_row();
-
-                    ui.label("Wrong (×)");
-                    for p in players {
-                        ui.label(
-                            egui::RichText::new(statuses[&p.id].wrong_count.to_string())
-                                .color(egui::Color32::RED),
-                        );
-                    }
-                    ui.end_row();
-                });
-        });
-    }
 }
 
 impl eframe::App for ScoreboardApp {
@@ -733,9 +654,6 @@ impl eframe::App for ScoreboardApp {
             return;
         }
 
-        // 背景色
-        let bg_color = egui::Color32::from_rgb(20, 20, 30);
-
         // 共有データの取得
         let (current_question, questions, players, display_statuses) = {
             let data = self.state.lock().unwrap();
@@ -745,6 +663,11 @@ impl eframe::App for ScoreboardApp {
         // メイン画面用の問題文 (indexが1以上なら「前回」を表示)
         let display_q_text = if current_question > 0 && current_question <= questions.len() {
             &questions[current_question - 1].text
+        } else {
+            "Waiting for Quiz to start..."
+        };
+        let display_a_text = if current_question > 0 && current_question <= questions.len() {
+            &questions[current_question - 1].answer
         } else {
             "Waiting for Quiz to start..."
         };
@@ -760,135 +683,101 @@ impl eframe::App for ScoreboardApp {
         }
 
         // メインUIの描画
+        // 背景色
+        let bg_color = egui::Color32::from_rgb(20, 20, 30);
+
         egui::CentralPanel::default()
             .frame(egui::Frame::none().fill(bg_color))
             .show(ctx, |ui| {
-                // --- コントロールパネル（ルール選択など）削除予定 ---
-                ui.group(|ui| {
-                    ui.horizontal(|ui| {
-                        // 3D モード トグル
-                        ui.checkbox(&mut self.is_3d_mode, "3D Mode");
-                        ui.separator();
+                ui.add_space(10.0);
 
-                        // ルール選択
-                        ui.label("Rule:");
-                        let mut current_rule = {
-                            let state = self.state.lock().unwrap();
-                            state.rule_option
-                        };
-
-                        let mut rule_changed = false;
-                        for &rule in RuleOption::all_options() {
-                            if ui.selectable_label(current_rule == rule, rule.label()).clicked() {
-                                current_rule = rule;
-                                rule_changed = true;
-                            }
-                        }
-
-                        if rule_changed {
-                            let mut state = self.state.lock().unwrap();
-                            state.rule_option = current_rule;
-                        }
-
-                        // N Correct M Wrong / Freeze / N By M / UpDown パラメータ編集
-                        if current_rule == RuleOption::NCorrectMWrong
-                            || current_rule == RuleOption::UpDown
-                            || current_rule == RuleOption::Freeze
-                            || current_rule == RuleOption::NByM
-                        {
-                            ui.separator();
-                            let mut state = self.state.lock().unwrap();
-                            ui.label("N Correct:");
-                            ui.add(egui::Slider::new(&mut state.n_correct, 1..=10).text(""));
-                            ui.label("M Wrong:");
-                            ui.add(egui::Slider::new(&mut state.m_wrong, 1..=10).text(""));
-                        }
-                    });
-                });
+                // --- ラウンド名 ---
+                ui.label(egui::RichText::new(&self.config.round_name).color(egui::Color32::from_rgb(255, 255, 255)).strong().size(15.0));
 
                 ui.add_space(10.0);
 
-                if self.is_3d_mode {
-                    // --- 問題文パネル ---
-                    ui.vertical_centered(|ui| {
-                        let panel_width = ui.available_width() - 40.0;
-                        let q_label = format!("Q{}: {}", current_question, display_q_text);
-                        self.ui_3d_card(ui, &q_label, 22.0, egui::vec2(panel_width, 60.0), egui::Color32::from_rgb(40, 40, 50), 16.0, egui::Color32::from_rgb(0, 240, 240), None);
-                    });
+                // --- 問題文 ---
+                ui.vertical_centered(|ui| {
+                    let panel_width = ui.available_width() - 40.0;
+                    let q_label = format!("Q{}: {}", current_question, display_q_text);
+                    self.ui_3d_card(ui, &q_label, 22.0, egui::vec2(panel_width, 60.0), egui::Color32::from_rgb(40, 40, 50), 16.0, egui::Color32::from_rgb(0, 240, 240), None);
+                });
+                // --- 答え ---
+                ui.vertical_centered(|ui| {
+                    let panel_width = ui.available_width() - 60.0;
+                    self.ui_3d_card(ui, &display_a_text, 15.0, egui::vec2(panel_width, 30.0), egui::Color32::from_rgb(40, 40, 50), 0.0, egui::Color32::from_rgb(0, 240, 240), None);
+                });
 
-                    ui.add_space(20.0);
+                ui.add_space(20.0);
 
-                    egui::ScrollArea::both().show(ui, |ui| {
-                        // タイル幅と間隔
-                        let available_width = ui.available_width();
-                        let player_count = players.len().max(1);
-                        let spacing_x = 5.0;
-                        let spacing_y = 5.0;
-                        let tile_width = ((available_width/player_count as f32)-spacing_x).max(90.0);
+                egui::ScrollArea::both().show(ui, |ui| {
+                    // タイル幅と間隔
+                    let available_width = ui.available_width();
+                    let player_count = players.len().max(1);
+                    let spacing_x = 5.0;
+                    let spacing_y = 5.0;
+                    let tile_width = ((available_width/player_count as f32)-spacing_x).max(90.0);
 
-                        egui::Grid::new("3d_grid_extended")
-                            .spacing([spacing_x, spacing_y])
-                            .show(ui, |ui| {
-                                // --- 1R順位行 ---
-                                for p in &players {
-                                    let ordinal = match p.id % 10 {
-                                        1 if p.id % 100 != 11 => "st",
-                                        2 if p.id % 100 != 12 => "nd",
-                                        3 if p.id % 100 != 13 => "rd",
-                                        _ => "th",
-                                    };
-                                    let rank_str = format!("{}{}", p.id.to_string(), ordinal);
-                                    self.ui_3d_card(ui, &rank_str, 18.0, egui::vec2(tile_width, 45.0), egui::Color32::from_rgb(200, 150, 80), 0.0, egui::Color32::from_rgb(240, 240, 0), None);
-                                }
-                                ui.end_row();
+                    egui::Grid::new("3d_grid_extended")
+                        .spacing([spacing_x, spacing_y])
+                        .show(ui, |ui| {
+                            // --- 1R順位行 ---
+                            for p in &players {
+                                let ordinal = match p.id % 10 {
+                                    1 if p.id % 100 != 11 => "st",
+                                    2 if p.id % 100 != 12 => "nd",
+                                    3 if p.id % 100 != 13 => "rd",
+                                    _ => "th",
+                                };
+                                let rank_str = format!("{}{}", p.id.to_string(), ordinal);
+                                self.ui_3d_card(ui, &rank_str, 18.0, egui::vec2(tile_width, 45.0), egui::Color32::from_rgb(200, 150, 80), 0.0, egui::Color32::from_rgb(240, 240, 0), None);
+                            }
+                            ui.end_row();
 
-                                // --- 名前と所属・学年（統合） ---
-                                for p in &players {
-                                    let is_frozen = display_statuses[&p.id].freeze_count > 0;
-                                    let name_card_color = if is_frozen {
-                                        egui::Color32::from_rgb(0, 200, 255)
-                                    } else {
-                                        egui::Color32::from_rgb(60, 60, 80)
-                                    };
-                                    self.ui_3d_player_info_card(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), 40.0, 20.0, egui::vec2(tile_width, 350.0), name_card_color, 0.0, egui::Color32::from_rgb(240, 240, 0), None);
-                                }
-                                ui.end_row();
+                            // --- 名前と所属・学年（統合） ---
+                            for p in &players {
+                                let is_frozen = display_statuses[&p.id].freeze_count > 0;
+                                let name_card_color = if is_frozen {
+                                    egui::Color32::from_rgb(0, 200, 255)
+                                } else {
+                                    egui::Color32::from_rgb(60, 60, 80)
+                                };
+                                self.ui_3d_player_info_card(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), 40.0, 20.0, egui::vec2(tile_width, 350.0), name_card_color, 0.0, egui::Color32::from_rgb(240, 240, 0), None);
+                            }
+                            ui.end_row();
 
-                                // --- スコア行（アニメーション付き） ---
-                                for p in &players {
-                                    let score_str = display_statuses[&p.id].score.to_string();
-                                    let change = self.last_change_times.get(&p.id).cloned();
-                                    self.ui_3d_card(ui, &score_str, 45.0, egui::vec2(tile_width, 60.0), egui::Color32::from_rgb(40, 80, 120), 8.0, egui::Color32::from_rgb(240, 240, 0), change);
-                                }
-                                ui.end_row();
+                            // --- スコア行（アニメーション付き） ---
+                            for p in &players {
+                                let score_str = display_statuses[&p.id].score.to_string();
+                                let change = self.last_change_times.get(&p.id).cloned();
+                                self.ui_3d_card(ui, &score_str, 45.0, egui::vec2(tile_width, 60.0), egui::Color32::from_rgb(40, 80, 120), 8.0, egui::Color32::from_rgb(240, 240, 0), change);
+                            }
+                            ui.end_row();
 
-                                // --- 正答数と誤答数を横並びに配置 ---
-                                for p in &players {
-                                    // 1つのセルの中で水平に並べる
-                                    ui.horizontal(|ui| {
-                                        let spacing_between_cw = spacing_x / 2.0;
-                                        ui.spacing_mut().item_spacing.x = spacing_between_cw;
+                            // --- 正答数と誤答数を横並びに配置 ---
+                            for p in &players {
+                                // 1つのセルの中で水平に並べる
+                                ui.horizontal(|ui| {
+                                    let spacing_between_cw = spacing_x / 2.0;
+                                    ui.spacing_mut().item_spacing.x = spacing_between_cw;
 
-                                        let correct_val = display_statuses[&p.id].correct_count.to_string();
-                                        let wrong_val = display_statuses[&p.id].wrong_count.to_string();
+                                    let correct_val = display_statuses[&p.id].correct_count.to_string();
+                                    let wrong_val = display_statuses[&p.id].wrong_count.to_string();
 
-                                        let half_size = egui::vec2((tile_width-spacing_between_cw)/2.0, 30.0);
+                                    let half_size = egui::vec2((tile_width-spacing_between_cw)/2.0, 30.0);
 
-                                        // 正答数
-                                        self.ui_3d_card(ui, &correct_val, 20.0, half_size, egui::Color32::from_rgb(40, 100, 40), 0.0, egui::Color32::from_rgb(240, 240, 0), None);
-                                        // 誤答数
-                                        self.ui_3d_card(ui, &wrong_val, 20.0, half_size, egui::Color32::from_rgb(120, 40, 40), 0.0, egui::Color32::from_rgb(240, 240, 0), None);
-                                    });
-                                }
-                                ui.end_row();
-                            });
-                    });
-                } else {
-                    self.render_classic_grid(ui, &players, &display_statuses);
-                }
+                                    // 正答数
+                                    self.ui_3d_card(ui, &correct_val, 20.0, half_size, egui::Color32::from_rgb(40, 100, 40), 0.0, egui::Color32::from_rgb(240, 240, 0), None);
+                                    // 誤答数
+                                    self.ui_3d_card(ui, &wrong_val, 20.0, half_size, egui::Color32::from_rgb(120, 40, 40), 0.0, egui::Color32::from_rgb(240, 240, 0), None);
+                                });
+                            }
+                            ui.end_row();
+                        });
+                });
             });
 
-        // 4. コントロールパネル
+        // コントロールパネル
         ctx.show_viewport_immediate(
             egui::ViewportId::from_hash_of("control_panel"),
             egui::ViewportBuilder::default()
@@ -903,6 +792,7 @@ impl eframe::App for ScoreboardApp {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     let mut data = self.state.lock().unwrap();
                     ui.heading("Quiz Monitor");
+
                     ui.group(|ui| {
                         ui.set_width(ui.available_width());
                         // ディスプレイに映っているもの（前回分）
@@ -936,31 +826,34 @@ impl eframe::App for ScoreboardApp {
 
                     ui.separator();
 
-                    // 解答操作
                     let player_info: Vec<(PlayerId, String)> = data.players.iter()
                         .map(|p| (p.id, p.name.clone()))
                         .collect();
 
-                    for (pid, name) in &player_info {
-                        ui.horizontal(|ui| {
-                            ui.label(format!("{}: {}", pid, name));
-                            if ui.button(egui::RichText::new("Correct").color(egui::Color32::GREEN)).clicked() {
-                                if let Some(status) = data.working_statuses.get_mut(pid) {
-                                    status.score += 1;
-                                    status.correct_count += 1;
+                    // 解答操作
+                    // egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
+                        egui::Grid::new("answer_grid").striped(true).show(ui, |ui| {
+                            for (pid, name) in &player_info {
+                                ui.label(format!("{}: {}", pid, name));
+                                if ui.button(egui::RichText::new("Correct").color(egui::Color32::GREEN)).clicked() {
+                                    if let Some(status) = data.working_statuses.get_mut(pid) {
+                                        status.score += 1;
+                                        status.correct_count += 1;
+                                    }
                                 }
-                            }
-                            if ui.button(egui::RichText::new("Wrong").color(egui::Color32::RED)).clicked() {
-                                if let Some(status) = data.working_statuses.get_mut(pid) {
-                                    status.wrong_count += 1;
+                                if ui.button(egui::RichText::new("Wrong").color(egui::Color32::RED)).clicked() {
+                                    if let Some(status) = data.working_statuses.get_mut(pid) {
+                                        status.wrong_count += 1;
+                                    }
                                 }
+                                ui.end_row();
                             }
                         });
-                    }
+                    // });
+
+                    ui.separator();
 
                     // 手動得点操作
-                    ui.separator();
-                    ui.label("Player Status Edit");
                     egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
                         egui::Grid::new("edit_grid").striped(true).show(ui, |ui| {
                             for (pid, name) in &player_info {
