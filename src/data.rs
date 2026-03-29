@@ -67,6 +67,7 @@ pub struct PlayerStatus {
     pub score: i32,
     pub correct_count: u32,
     pub wrong_count: u32,
+    pub freeze_count: u32,
     #[allow(dead_code)]
     pub frozen_until: Option<u32>,
     #[allow(dead_code)]
@@ -81,6 +82,7 @@ impl PlayerStatus {
             score: 0,
             correct_count: 0,
             wrong_count: 0,
+            freeze_count: 0,
             frozen_until: None,
             is_winner: false,
             is_eliminated: false,
@@ -134,6 +136,8 @@ pub enum RuleOption {
     FreeBatting,
     NCorrectMWrong,
     UpDown,
+    NFreeze,
+    NbyM,
 }
 
 impl RuleOption {
@@ -141,12 +145,14 @@ impl RuleOption {
         match self {
             Self::FreeBatting => "Free Batting",
             Self::NCorrectMWrong => "N Correct M Wrong",
-            Self::UpDown => "UpDown"
+            Self::UpDown => "UpDown",
+            Self::NFreeze => "N Freeze",
+            Self::NbyM => "N by M",
         }
     }
 
     pub fn all_options() -> &'static [RuleOption] {
-        &[Self::FreeBatting, Self::NCorrectMWrong, Self::UpDown]
+        &[Self::FreeBatting, Self::NCorrectMWrong, Self::UpDown, Self::NFreeze, Self::NbyM]
     }
 }
 
@@ -181,7 +187,7 @@ impl SharedQuizState {
             display_statuses,
             working_statuses,
             questions,
-            current_question: 1,
+            current_question: 0,
             rule_option: RuleOption::default(),
             n_correct: 7,
             m_wrong: 3,

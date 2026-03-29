@@ -121,6 +121,9 @@ pub fn handle_answer_command(
         return Err(format!("{} already locked out", player.name));
     }
 
+    if status.map(|s| s.freeze_count).unwrap_or(0) > 0 {
+        return Err(format!("{} is temporarily frozen (freeze_count > 0)", player.name));
+    }
     if status.map(|s| s.frozen_until).flatten().map_or(false, |f| f > 0) {
         let frozen_until = status.unwrap().frozen_until.unwrap();
         return Err(format!("{} is frozen until question {}", player.name, frozen_until));
@@ -174,7 +177,7 @@ pub fn select_rule() -> Result<(RuleOption, i32, i32), String> {
             if idx < RuleOption::all_options().len() {
                 let selected_rule = RuleOption::all_options()[idx];
                 
-                if selected_rule == RuleOption::NCorrectMWrong {
+                if selected_rule == RuleOption::NCorrectMWrong || selected_rule == RuleOption::NFreeze || selected_rule == RuleOption::NbyM {
                     let (n, m) = get_ncorrect_mwrong_params()?;
                     return Ok((selected_rule, n, m));
                 } else {
