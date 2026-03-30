@@ -71,6 +71,9 @@ pub struct PlayerStatus {
     pub is_winner: bool,
     pub is_eliminated: bool,
     pub finish_rank: Option<u32>,
+    pub has_streak_right: bool,
+    pub x: u32,
+    pub y: u32,
 }
 
 impl PlayerStatus {
@@ -84,6 +87,9 @@ impl PlayerStatus {
             is_winner: false,
             is_eliminated: false,
             finish_rank: None,
+            has_streak_right: false,
+            x: 0,
+            y: 1,
         }
     }
 }
@@ -133,6 +139,9 @@ pub enum RuleOption {
     UpDown,
     Freeze,
     NByM,
+    RenDatsuNCorrectMWrong,
+    QuickBoard,
+    SpecialBy,
 }
 
 impl RuleOption {
@@ -143,11 +152,23 @@ impl RuleOption {
             Self::UpDown => "UpDown",
             Self::Freeze => "Freeze",
             Self::NByM => "N by M",
+            Self::RenDatsuNCorrectMWrong => "連答付き N◯M×",
+            Self::QuickBoard => "早押しボード",
+            Self::SpecialBy => "変則by",
         }
     }
 
     pub fn all_options() -> &'static [RuleOption] {
-        &[Self::FreeBatting, Self::NCorrectMWrong, Self::UpDown, Self::Freeze, Self::NByM]
+        &[
+            Self::FreeBatting,
+            Self::NCorrectMWrong,
+            Self::UpDown,
+            Self::Freeze,
+            Self::NByM,
+            Self::RenDatsuNCorrectMWrong,
+            Self::QuickBoard,
+            Self::SpecialBy,
+        ]
     }
 }
 

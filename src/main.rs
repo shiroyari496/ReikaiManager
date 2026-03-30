@@ -152,7 +152,7 @@ fn run_terminal_loop(
             let m = shared_state.m_wrong;
             drop(shared_state);  // ロックを明示的に解放
 
-            apply_selected_rule(&rule_option, n, m, &mut player_statuses, &mut player_events, &mut question_status);
+            apply_selected_rule(&rule_option, n, m, &mut player_statuses, &mut player_events, &mut question_status, q as u32);
         }
 
         display_scores(&players, &player_statuses);
@@ -281,6 +281,7 @@ impl ScoreboardApp {
             &mut data.working_statuses,
             &mut data.player_events,
             &mut data.question_status,
+            data.current_question,
         );
 
         // 抜け順位を更新（勝利 or 脱落が初めて付与されたとき）
@@ -304,6 +305,7 @@ impl ScoreboardApp {
             &data.players,
             &data.display_statuses,
             self.config.next_round_advance_count as usize,
+            data.rule_option,
         ) {
             Ok(_) => {
                 self.config_message = format!(
@@ -369,7 +371,8 @@ impl ScoreboardApp {
             if
                 self.config.rule_option == RuleOption::NCorrectMWrong ||
                 self.config.rule_option == RuleOption::UpDown ||
-                self.config.rule_option == RuleOption::NByM
+                self.config.rule_option == RuleOption::NByM ||
+                self.config.rule_option == RuleOption::RenDatsuNCorrectMWrong
             {
                 ui.horizontal(|ui| {
                     ui.label("N Correct");
@@ -958,12 +961,14 @@ impl eframe::App for ScoreboardApp {
                             for (pid, name) in &player_info {
                                 ui.label(format!("{}: {}", pid, name));
 
-                                let is_disabled = data.question_status.finished
+                                let is_disabled = (data.question_status.finished && data.rule_option != RuleOption::QuickBoard)
                                     || data.working_statuses.get(pid).map_or(false, |s| s.freeze_count > 0);
 
                                 if ui.add_enabled(!is_disabled, egui::Button::new(egui::RichText::new("Correct").color(egui::Color32::GREEN))).clicked() {
                                     data.player_events.entry(*pid).or_default().push(Event::Correct);
-                                    data.question_status.finished = true;
+                                    if data.rule_option != RuleOption::QuickBoard {
+                                        data.question_status.finished = true;
+                                    }
                                     self.apply_pending_events(&mut data);
                                 }
 

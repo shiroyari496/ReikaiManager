@@ -115,34 +115,53 @@ pub fn write_next_round_players(
     players: &[Player],
     statuses: &HashMap<PlayerId, PlayerStatus>,
     advance_count: usize,
+    rule_option: crate::data::RuleOption,
 ) -> Result<()> {
-    let mut ranked: Vec<(PlayerId, u32)> = statuses
-        .iter()
-        .filter_map(|(&pid, status)| status.finish_rank.map(|r| (pid, r)))
-        .collect();
+    let mut player_order: Vec<&Player> = players.iter().collect();
 
-    ranked.sort_by_key(|(_, r)| *r);
+    player_order.sort_by(|a, b| {
+        let a_status = statuses.get(&a.id).cloned().unwrap_or_default();
+        let b_status = statuses.get(&b.id).cloned().unwrap_or_default();
+
+        if rule_option == crate::data::RuleOption::SpecialBy {
+            let a_product = (a_status.x as u64).saturating_mul(a_status.y as u64);
+            let b_product = (b_status.x as u64).saturating_mul(b_status.y as u64);
+            return b_product
+                .cmp(&a_product)
+                .then_with(|| b_status.y.cmp(&a_status.y))
+                .then_with(|| a.id.cmp(&b.id));
+        }
+
+        let a_rank = a_status.finish_rank;
+        let b_rank = b_status.finish_rank;
+        let by_finish_rank = match (a_rank, b_rank) {
+            (Some(ra), Some(rb)) => ra.cmp(&rb),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        };
+        if by_finish_rank != std::cmp::Ordering::Equal {
+            return by_finish_rank;
+        }
+
+        let by_eliminated = a_status.is_eliminated.cmp(&b_status.is_eliminated);
+        if by_eliminated != std::cmp::Ordering::Equal {
+            return by_eliminated;
+        }
+
+        b_status.score
+            .cmp(&a_status.score)
+            .then_with(|| b_status.correct_count.cmp(&a_status.correct_count))
+            .then_with(|| a_status.wrong_count.cmp(&b_status.wrong_count))
+            .then_with(|| a.id.cmp(&b.id))
+    });
 
     let mut selected = Vec::new();
-    for (pid, _rank) in &ranked {
+    for player in &player_order {
         if selected.len() >= advance_count {
             break;
         }
-        if let Some(player) = players.iter().find(|p| p.id == *pid) {
-            selected.push(player.clone());
-        }
-    }
-
-    if selected.len() < advance_count {
-        for player in players {
-            if selected.iter().any(|p| p.id == player.id) {
-                continue;
-            }
-            selected.push(player.clone());
-            if selected.len() >= advance_count {
-                break;
-            }
-        }
+        selected.push((*player).clone());
     }
 
     let mut wtr = csv::Writer::from_path(path)?;
