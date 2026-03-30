@@ -692,7 +692,7 @@ impl eframe::App for ScoreboardApp {
                 ui.add_space(10.0);
 
                 // --- ラウンド名 ---
-                ui.label(egui::RichText::new(&self.config.round_name).color(egui::Color32::from_rgb(255, 255, 255)).strong().size(15.0));
+                ui.label(egui::RichText::new(format!("      {}", &self.config.round_name)).color(egui::Color32::from_rgb(255, 255, 255)).strong().size(18.0));
 
                 ui.add_space(10.0);
 
@@ -700,7 +700,7 @@ impl eframe::App for ScoreboardApp {
                 ui.vertical_centered(|ui| {
                     let panel_width = ui.available_width() - 40.0;
                     let q_label = format!("Q{}: {}", current_question, display_q_text);
-                    self.ui_3d_card(ui, &q_label, 22.0, egui::vec2(panel_width, 60.0), egui::Color32::from_rgb(40, 40, 50), 16.0, egui::Color32::from_rgb(0, 240, 240), None);
+                    self.ui_3d_card(ui, &q_label, 22.0, egui::vec2(panel_width, 150.0), egui::Color32::from_rgb(40, 40, 50), 16.0, egui::Color32::from_rgb(0, 240, 240), None);
                 });
                 // --- 答え ---
                 ui.vertical_centered(|ui| {
@@ -816,22 +816,22 @@ impl eframe::App for ScoreboardApp {
                     ui.heading("Controller");
                     ui.separator();
 
-                    // 問題進行
-                    ui.horizontal(|ui| {
-                        if ui.button("Next Question").clicked() {
-                            data.display_statuses = data.working_statuses.clone();
-                            data.current_question += 1;
-                        }
-                    });
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        // 問題進行
+                        ui.horizontal(|ui| {
+                            if ui.button("Next Question").clicked() {
+                                data.display_statuses = data.working_statuses.clone();
+                                data.current_question += 1;
+                            }
+                        });
 
-                    ui.separator();
+                        ui.separator();
 
-                    let player_info: Vec<(PlayerId, String)> = data.players.iter()
-                        .map(|p| (p.id, p.name.clone()))
-                        .collect();
+                        let player_info: Vec<(PlayerId, String)> = data.players.iter()
+                            .map(|p| (p.id, p.name.clone()))
+                            .collect();
 
-                    // 解答操作
-                    // egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
+                        // 解答操作
                         egui::Grid::new("answer_grid").striped(true).show(ui, |ui| {
                             for (pid, name) in &player_info {
                                 ui.label(format!("{}: {}", pid, name));
@@ -846,19 +846,21 @@ impl eframe::App for ScoreboardApp {
                                         status.wrong_count += 1;
                                     }
                                 }
+                                if ui.button(egui::RichText::new("Buzz").color(egui::Color32::DARK_GRAY)).clicked() {
+                                    if let Some(status) = data.working_statuses.get_mut(pid) {
+                                    }
+                                }
                                 ui.end_row();
                             }
                         });
-                    // });
 
-                    ui.separator();
+                        ui.separator();
 
-                    // 手動得点操作
-                    egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
+                        // 手動得点操作
                         egui::Grid::new("edit_grid").striped(true).show(ui, |ui| {
                             for (pid, name) in &player_info {
                                 let s = data.working_statuses.get_mut(pid).unwrap();
-                                ui.label(name);
+                                ui.label(format!("{}: {}", pid, name));
                                 ui.add(egui::DragValue::new(&mut s.score).prefix("Pt:"));
                                 ui.add(egui::DragValue::new(&mut s.correct_count).prefix("○:"));
                                 ui.add(egui::DragValue::new(&mut s.wrong_count).prefix("×:"));
