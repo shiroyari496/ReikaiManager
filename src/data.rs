@@ -70,10 +70,9 @@ pub struct PlayerStatus {
     pub freeze_count: u32,
     #[allow(dead_code)]
     pub frozen_until: Option<u32>,
-    #[allow(dead_code)]
     pub is_winner: bool,
-    #[allow(dead_code)]
     pub is_eliminated: bool,
+    pub finish_rank: Option<u32>,
 }
 
 impl PlayerStatus {
@@ -86,6 +85,7 @@ impl PlayerStatus {
             frozen_until: None,
             is_winner: false,
             is_eliminated: false,
+            finish_rank: None,
         }
     }
 }
@@ -146,7 +146,7 @@ impl RuleOption {
             Self::FreeBatting => "Free Batting",
             Self::NCorrectMWrong => "N Correct M Wrong",
             Self::UpDown => "UpDown",
-            Self::Freeze => "N Freeze",
+            Self::Freeze => "Freeze",
             Self::NByM => "N by M",
         }
     }
@@ -175,6 +175,8 @@ pub struct SharedQuizState {
     pub rule_option: RuleOption,
     pub n_correct: u32,
     pub m_wrong: u32,
+    pub next_finish_rank: u32,
+    pub round_completed: bool,
 }
 
 impl SharedQuizState {
@@ -196,6 +198,8 @@ impl SharedQuizState {
             rule_option: RuleOption::default(),
             n_correct: 7,
             m_wrong: 3,
+            next_finish_rank: 1,
+            round_completed: false,
         }
     }
 
@@ -211,6 +215,8 @@ impl SharedQuizState {
             rule_option: RuleOption::default(),
             n_correct: 7,
             m_wrong: 3,
+            next_finish_rank: 1,
+            round_completed: false,
         }
     }
 }

@@ -38,9 +38,9 @@ impl QuizRule for FreeBatting {
             let status = player_statuses
                 .entry(*player_id)
                 .or_insert_with(PlayerStatus::new);
-            status.score += correct_count;
             status.correct_count += correct_count as u32;
             status.wrong_count += wrong_count as u32;
+            status.score += correct_count as i32;
         }
     }
 }
@@ -81,10 +81,10 @@ impl QuizRule for NCorrectMWrong {
             let status = player_statuses
                 .entry(*player_id)
                 .or_insert_with(PlayerStatus::new);
-            status.score += correct_count;
             status.correct_count += correct_count as u32;
             status.wrong_count += wrong_count as u32;
-            if status.correct_count >= self.n as u32 {
+            status.score += correct_count as i32;
+            if status.score >= self.n as i32 {
                 status.is_winner = true;
             }
             if status.wrong_count >= self.m as u32 {
@@ -130,16 +130,13 @@ impl QuizRule for Freeze {
             let status = player_statuses
                 .entry(*player_id)
                 .or_insert_with(PlayerStatus::new);
-
-            status.score += correct_count as i32;
             status.correct_count += correct_count as u32;
             status.wrong_count += wrong_count as u32;
-
+            status.score += correct_count as i32;
             if wrong_count > 0 {
                 status.freeze_count = status.wrong_count + 1;
             }
-
-            if status.correct_count >= self.n as u32 {
+            if status.score >= self.n as i32 {
                 status.is_winner = true;
             }
         }
@@ -168,7 +165,6 @@ impl QuizRule for NByM {
         for (player_id, events) in player_events.iter() {
             let mut correct_delta = 0;
             let mut wrong_delta = 0;
-
             for event in events {
                 match event {
                     Event::Buzz(_) => {}
@@ -181,19 +177,16 @@ impl QuizRule for NByM {
                     _ => {}
                 }
             }
-
             let status = player_statuses
                 .entry(*player_id)
                 .or_insert_with(PlayerStatus::new);
-
-            status.correct_count += correct_delta;
-            status.wrong_count += wrong_delta;
+            status.correct_count += correct_delta as u32;
+            status.wrong_count += wrong_delta as u32;
             status.score = status.correct_count as i32 * (self.m - status.wrong_count) as i32;
-
             if status.score >= self.n as i32 * self.m as i32 {
                 status.is_winner = true;
             }
-            if status.wrong_count >= self.m {
+            if status.wrong_count >= self.m as u32 {
                 status.is_eliminated = true;
             }
         }
@@ -231,7 +224,7 @@ impl QuizRule for UpDown {
                     }
                     Event::Wrong => {
                         wrong_count += 1;
-                        correct_count = 0; // 間違えたら正解数リセット
+                        correct_count = 0;
                     }
                     _ => {}
                 }
@@ -241,9 +234,9 @@ impl QuizRule for UpDown {
                 .or_insert_with(PlayerStatus::new);
             status.correct_count += correct_count as u32;
             status.wrong_count += wrong_count as u32;
-            status.score += correct_count;
+            status.score += correct_count as i32;
             if wrong_count > 0 { status.score = 0; }
-            if status.correct_count >= self.n as u32 {
+            if status.score >= self.n as i32 {
                 status.is_winner = true;
             }
             if status.wrong_count >= self.m as u32 {

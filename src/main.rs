@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::data::{Player, Question, PlayerStatus, QuestionStatus, Event, SharedQuizState, PlayerId, RuleOption};
-use crate::loader::{load_players, load_questions, write_log_head, write_log_line};
+use crate::loader::{load_players, load_questions, write_log_head, write_log_line, write_next_round_players};
 use crate::terminal::{read_line, show_prompt, display_players, display_question, display_scores, 
                      handle_set_command, handle_answer_command};
 use crate::rules::apply_selected_rule;
@@ -203,6 +203,8 @@ struct AppConfig {
     players_csv: String,
     questions_csv: String,
     log_csv: String,
+    next_round_player_csv: String,
+    next_round_advance_count: u32,
     rule_option: RuleOption,
     n_correct: u32,
     m_wrong: u32,
@@ -215,6 +217,8 @@ impl Default for AppConfig {
             players_csv: "data/players.csv".into(),
             questions_csv: "data/questions.csv".into(),
             log_csv: "data/log.csv".into(),
+            next_round_player_csv: "data/next_round_players.csv".into(),
+            next_round_advance_count: 5,
             rule_option: RuleOption::default(),
             n_correct: 7,
             m_wrong: 3,
@@ -263,13 +267,13 @@ impl ScoreboardApp {
         data.rule_option = self.config.rule_option;
         data.n_correct = self.config.n_correct;
         data.m_wrong = self.config.m_wrong;
+        data.next_finish_rank = 1;
+        data.round_completed = false;
     }
 
     fn apply_pending_events(&self, data: &mut SharedQuizState) {
-        // Initiate from last committed display state
         data.working_statuses = data.display_statuses.clone();
 
-        // Apply rule over all collected events in the current question
         apply_selected_rule(
             &data.rule_option,
             data.n_correct,
@@ -278,20 +282,40 @@ impl ScoreboardApp {
             &mut data.player_events,
             &mut data.question_status,
         );
+
+        // 抜け順位を更新（勝利 or 脱落が初めて付与されたとき）
+        for status in data.working_statuses.values_mut() {
+            if status.finish_rank.is_none() && status.is_winner {
+                status.finish_rank = Some(data.next_finish_rank);
+                data.next_finish_rank += 1;
+            }
+        }
     }
 
-    fn recompute_working_statuses(&self, data: &mut SharedQuizState) {
-        data.working_statuses = data.display_statuses.clone();
-        let mut q_status = QuestionStatus::new();
-        apply_selected_rule(
-            &data.rule_option,
-            data.n_correct,
-            data.m_wrong,
-            &mut data.working_statuses,
-            &mut data.player_events,
-            &mut q_status,
-        );
-        data.question_status = q_status;
+    fn export_next_round_players(&mut self, data: &mut SharedQuizState) {
+        if data.round_completed {
+            return;
+        }
+
+        data.round_completed = true;
+
+        match write_next_round_players(
+            &self.config.next_round_player_csv,
+            &data.players,
+            &data.display_statuses,
+            self.config.next_round_advance_count as usize,
+        ) {
+            Ok(_) => {
+                self.config_message = format!(
+                    "終了: {}人を {} に書き出しました",
+                    self.config.next_round_advance_count,
+                    self.config.next_round_player_csv
+                );
+            }
+            Err(e) => {
+                self.config_message = format!("CSV出力失敗: {}", e);
+            }
+        }
     }
 
     fn render_config_ui(&mut self, ctx: &egui::Context) {
@@ -318,6 +342,14 @@ impl ScoreboardApp {
             ui.horizontal(|ui| {
                 ui.label("Log CSV");
                 ui.text_edit_singleline(&mut self.config.log_csv);
+            });
+            ui.horizontal(|ui| {
+                ui.label("Next Round Players CSV");
+                ui.text_edit_singleline(&mut self.config.next_round_player_csv);
+            });
+            ui.horizontal(|ui| {
+                ui.label("Advance Count");
+                ui.add(egui::DragValue::new(&mut self.config.next_round_advance_count).clamp_range(1..=100));
             });
 
             ui.separator();
@@ -779,9 +811,31 @@ impl eframe::App for ScoreboardApp {
 
                             // --- スコア行（アニメーション付き） ---
                             for p in &players {
-                                let score_str = display_statuses[&p.id].score.to_string();
+                                let status = &display_statuses[&p.id];
+                                let mut score_str = status.score.to_string();
+                                let mut font_size = 45.0;
+
+                                if let Some(rank) = status.finish_rank {
+                                    if status.is_winner {
+                                        score_str = format!("{}\n(Win! #{})", score_str, rank);
+                                        font_size = 15.0;
+                                    } else if status.is_eliminated {
+                                        score_str = format!("{}\n(Elim #{})", score_str, rank);
+                                        font_size = 15.0;
+                                    } else {
+                                        score_str = format!("{}\n(Rnk  #{})", score_str, rank);
+                                        font_size = 15.0;
+                                    }
+                                } else if status.is_winner {
+                                    score_str = format!("{}\n(Win!)    ", score_str);
+                                    font_size = 15.0;
+                                } else if status.is_eliminated {
+                                    score_str = format!("{}\n(Elim)    ", score_str);
+                                    font_size = 15.0;
+                                }
+
                                 let change = self.last_change_times.get(&p.id).cloned();
-                                self.ui_3d_card(ui, &score_str, 45.0, egui::vec2(tile_width, 60.0), egui::Color32::from_rgb(40, 80, 120), 8.0, egui::Color32::from_rgb(240, 240, 0), change);
+                                self.ui_3d_card(ui, &score_str, font_size, egui::vec2(tile_width, 60.0), egui::Color32::from_rgb(40, 80, 120), 8.0, egui::Color32::from_rgb(240, 240, 0), change);
                             }
                             ui.end_row();
 
@@ -821,14 +875,19 @@ impl eframe::App for ScoreboardApp {
                 );
 
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    let mut data = self.state.lock().unwrap();
+                    let state_arc = self.state.clone(); 
+                    let mut data = state_arc.lock().unwrap();
                     ui.heading("Quiz Monitor");
 
                     ui.group(|ui| {
                         ui.set_width(ui.available_width());
                         // ディスプレイに映っているもの（前回分）
                         ui.label(egui::RichText::new("ON SCREEN (Previous):").color(egui::Color32::GOLD));
-                        let prev_text = if data.current_question > 0 { &data.questions[data.current_question as usize - 1].text } else { "-" };
+                        let prev_text = if data.current_question > 0 && (data.current_question as usize) <= data.questions.len() {
+                            &data.questions[data.current_question as usize - 1].text.clone()
+                        } else {
+                            "-"
+                        };
                         ui.label(prev_text);
 
                         ui.separator();
@@ -837,9 +896,15 @@ impl eframe::App for ScoreboardApp {
                         ui.label(egui::RichText::new("NEXT UP (Current):").color(egui::Color32::LIGHT_BLUE));
                         let curr_idx = data.current_question as usize;
                         if curr_idx < data.questions.len() {
-                            ui.label(egui::RichText::new(&data.questions[curr_idx].text).size(18.0).strong());
+                            let curr_text = data.questions[curr_idx].text.clone(); 
+                            ui.label(egui::RichText::new(curr_text).size(18.0).strong());
                         } else {
                             ui.label("No more questions.");
+                        }
+
+                        if data.round_completed {
+                            ui.separator();
+                            ui.label(egui::RichText::new("Round completed: next round players exported.").color(egui::Color32::GREEN));
                         }
                     });
 
@@ -851,23 +916,34 @@ impl eframe::App for ScoreboardApp {
                         // 問題進行
                         ui.horizontal(|ui| {
                             if ui.button("Next Question").clicked() {
-                                // 問題確定: 現在の暫定ステータスを表示用に確定
-                                data.display_statuses = data.working_statuses.clone();
+                                if data.round_completed {
+                                    // すでに最終問題完了後
+                                } else if data.current_question as usize >= data.questions.len() {
+                                    // 最終問題の後、完了状態にする
+                                    self.export_next_round_players(&mut data);
+                                } else {
+                                    // 問題確定: 現在の暫定ステータスを表示用に確定
+                                    data.display_statuses = data.working_statuses.clone();
 
-                                // 凍結カウントダウン
-                                for status in data.display_statuses.values_mut() {
-                                    if status.freeze_count > 0 {
-                                        status.freeze_count -= 1;
+                                    // 凍結カウントダウン
+                                    for status in data.display_statuses.values_mut() {
+                                        if status.freeze_count > 0 {
+                                            status.freeze_count -= 1;
+                                        }
+                                    }
+
+                                    // 次の問題へ移行
+                                    data.current_question += 1;
+
+                                    // 新しい問題に向けてイベント・状態リセット
+                                    data.player_events.clear();
+                                    data.question_status = QuestionStatus::new();
+                                    data.working_statuses = data.display_statuses.clone();
+
+                                    if data.current_question as usize >= data.questions.len() {
+                                        self.export_next_round_players(&mut data);
                                     }
                                 }
-
-                                // 次の問題へ移行
-                                data.current_question += 1;
-
-                                // 新しい問題に向けてイベント・状態リセット
-                                data.player_events.clear();
-                                data.question_status = QuestionStatus::new();
-                                data.working_statuses = data.display_statuses.clone();
                             }
                         });
 
@@ -909,6 +985,7 @@ impl eframe::App for ScoreboardApp {
                         ui.separator();
 
                         // 手動得点操作
+                        ui.label("解答操作の後、Next Questionの前に行うこと");
                         egui::Grid::new("edit_grid").striped(true).show(ui, |ui| {
                             for (pid, name) in &player_info {
                                 let s = data.working_statuses.get_mut(pid).unwrap();

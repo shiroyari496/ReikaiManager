@@ -1,4 +1,4 @@
-use crate::data::{Player, PlayerRow, Question, QuestionRow, PlayerId, Event};
+use crate::data::{Player, PlayerRow, Question, QuestionRow, PlayerId, PlayerStatus, Event};
 use std::collections::HashMap;
 use std::fs::OpenOptions;
 
@@ -108,6 +108,55 @@ pub fn write_log_line(
     }
 
     wtr.write_record(&row)?;
+    wtr.flush()?;
+    Ok(())
+}
+
+pub fn write_next_round_players(
+    path: &str,
+    players: &[Player],
+    statuses: &HashMap<PlayerId, PlayerStatus>,
+    advance_count: usize,
+) -> Result<()> {
+    let mut ranked: Vec<(PlayerId, u32)> = statuses
+        .iter()
+        .filter_map(|(&pid, status)| status.finish_rank.map(|r| (pid, r)))
+        .collect();
+
+    ranked.sort_by_key(|(_, r)| *r);
+
+    let mut selected = Vec::new();
+    for (pid, _rank) in &ranked {
+        if selected.len() >= advance_count {
+            break;
+        }
+        if let Some(player) = players.iter().find(|p| p.id == *pid) {
+            selected.push(player.clone());
+        }
+    }
+
+    if selected.len() < advance_count {
+        for player in players {
+            if selected.iter().any(|p| p.id == player.id) {
+                continue;
+            }
+            selected.push(player.clone());
+            if selected.len() >= advance_count {
+                break;
+            }
+        }
+    }
+
+    let mut wtr = csv::Writer::from_path(path)?;
+    wtr.write_record(&["id", "name", "affiliation", "grade"])?;
+    for p in selected {
+        wtr.write_record(&[
+            p.id.to_string(),
+            p.name.clone(),
+            p.affiliation.clone().unwrap_or_default(),
+            p.grade.clone().unwrap_or_default(),
+        ])?;
+    }
     wtr.flush()?;
     Ok(())
 }
