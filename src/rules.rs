@@ -222,40 +222,54 @@ impl QuizRule for RenDatsuNCorrectMWrong {
             let mut correct_delta = 0;
             let mut wrong_delta = 0;
             let mut score_delta = 0;
-            let mut next_streak = status.has_streak_right;
 
-            let mut self_correct = false;
+            // イベント内容をチェック
+            let has_self_correct = events.iter().any(|e| matches!(e, Event::Correct));
+            let has_self_wrong = events.iter().any(|e| matches!(e, Event::Wrong));
+
+            // まず誤答数と正答数をカウント
             for event in events {
                 match event {
                     Event::Buzz(_) => {}
                     Event::Correct => {
                         question_status.finished = true;
                         correct_delta += 1;
-                        self_correct = true;
                         if status.has_streak_right {
                             score_delta += 2; // 1 point + 連答ボーナス
-                            next_streak = false;
                         } else {
                             score_delta += 1;
-                            next_streak = true;
                         }
                     }
                     Event::Wrong => {
                         wrong_delta += 1;
-                        next_streak = false;
                     }
                     _ => {}
                 }
             }
 
-            if any_correct && !self_correct {
-                next_streak = false;
-            }
-
             status.correct_count += correct_delta as u32;
             status.wrong_count += wrong_delta as u32;
             status.score += score_delta;
-            status.has_streak_right = next_streak;
+
+            // 連答権の更新ロジック
+            // 誤答があれば連答権は失われる
+            if has_self_wrong {
+                status.has_streak_right = false;
+            }
+            // 他人が正答した場合、自分が正答していなければ連答権は失われる
+            else if any_correct && !has_self_correct {
+                status.has_streak_right = false;
+            }
+            // 自分が正答した場合
+            else if has_self_correct {
+                // 連答権を持ったまま正答した場合は消失、そうでない場合は新規付与
+                if status.has_streak_right {
+                    status.has_streak_right = false;
+                } else {
+                    status.has_streak_right = true;
+                }
+            }
+            // それ以外は状態を維持（Buzzのみなど）
 
             if status.score >= self.n as i32 {
                 status.is_winner = true;

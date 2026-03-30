@@ -208,6 +208,7 @@ struct AppConfig {
     rule_option: RuleOption,
     n_correct: u32,
     m_wrong: u32,
+    initial_player_states: HashMap<PlayerId, (i32, u32, u32)>, // (score, correct, wrong)
 }
 
 impl Default for AppConfig {
@@ -222,6 +223,7 @@ impl Default for AppConfig {
             rule_option: RuleOption::default(),
             n_correct: 7,
             m_wrong: 3,
+            initial_player_states: HashMap::new(),
         }
     }
 }
@@ -229,7 +231,9 @@ impl Default for AppConfig {
 struct ScoreboardApp {
     state: Arc<Mutex<SharedQuizState>>,
     is_config_mode: bool,
+    show_player_setup: bool,
     config: AppConfig,
+    loaded_players: Vec<Player>,
     config_message: String,
     // 前回のスコアを保持して変更を検知する
     last_scores: HashMap<PlayerId, i32>,
@@ -243,7 +247,9 @@ impl ScoreboardApp {
         Self {
             state,
             is_config_mode: true,
+            show_player_setup: false,
             config: AppConfig::default(),
+            loaded_players: Vec::new(),
             config_message: "設定を入力して [Load Data] を押してください。".into(),
             last_scores: HashMap::new(),
             last_change_times: HashMap::new(),
@@ -253,7 +259,14 @@ impl ScoreboardApp {
     fn apply_config_to_state(&mut self, players: Vec<Player>, questions: Vec<Question>) {
         let mut display_statuses = HashMap::new();
         for p in &players {
-            display_statuses.insert(p.id, PlayerStatus::new());
+            let mut status = PlayerStatus::new();
+            // 初期値設定を反映
+            if let Some((score, correct, wrong)) = self.config.initial_player_states.get(&p.id) {
+                status.score = *score;
+                status.correct_count = *correct;
+                status.wrong_count = *wrong;
+            }
+            display_statuses.insert(p.id, status);
         }
 
         let mut data = self.state.lock().unwrap();
@@ -322,106 +335,172 @@ impl ScoreboardApp {
 
     fn render_config_ui(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Quiz Startup Configuration");
+            if self.show_player_setup {
+                ui.heading("Player Initial Setup");
+                ui.label("各プレイヤーの初期得点・正答数・誤答数を設定します（オプション）");
+                ui.separator();
 
-            ui.separator();
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    egui::Grid::new("player_setup_grid").striped(true).show(ui, |ui| {
+                        ui.label("Player");
+                        ui.label("Score");
+                        ui.label("Correct");
+                        ui.label("Wrong");
+                        ui.end_row();
 
-            ui.horizontal(|ui| {
-                ui.label("Round name");
-                ui.text_edit_singleline(&mut self.config.round_name);
-            });
+                        for p in &self.loaded_players {
+                            let entry = self.config.initial_player_states.entry(p.id).or_insert((0, 0, 0));
+                            ui.label(&p.name);
+                            ui.add(egui::Slider::new(&mut entry.0, -50..=200).text(""));
+                            ui.add(egui::Slider::new(&mut entry.1, 0..=100).text(""));
+                            ui.add(egui::Slider::new(&mut entry.2, 0..=100).text(""));
+                            ui.end_row();
+                        }
+                    });
+                });
 
-            ui.separator();
+                ui.separator();
 
-            ui.horizontal(|ui| {
-                ui.label("Players CSV");
-                ui.text_edit_singleline(&mut self.config.players_csv);
-            });
-            ui.horizontal(|ui| {
-                ui.label("Questions CSV");
-                ui.text_edit_singleline(&mut self.config.questions_csv);
-            });
-            ui.horizontal(|ui| {
-                ui.label("Log CSV");
-                ui.text_edit_singleline(&mut self.config.log_csv);
-            });
-            ui.horizontal(|ui| {
-                ui.label("Next Round Players CSV");
-                ui.text_edit_singleline(&mut self.config.next_round_player_csv);
-            });
-            ui.horizontal(|ui| {
-                ui.label("Advance Count");
-                ui.add(egui::DragValue::new(&mut self.config.next_round_advance_count).clamp_range(1..=100));
-            });
-
-            ui.separator();
-
-            ui.label("Rule option");
-            ui.horizontal( |ui| {
-                for &rule in RuleOption::all_options() {
-                    if ui
-                        .selectable_label(self.config.rule_option == rule, rule.label())
-                        .clicked()
-                    {
-                        self.config.rule_option = rule;
+                ui.horizontal(|ui| {
+                    if ui.button("Back to Config").clicked() {
+                        self.show_player_setup = false;
                     }
-                }
-            });
-
-            if
-                self.config.rule_option == RuleOption::NCorrectMWrong ||
-                self.config.rule_option == RuleOption::UpDown ||
-                self.config.rule_option == RuleOption::NByM ||
-                self.config.rule_option == RuleOption::RenDatsuNCorrectMWrong
-            {
-                ui.horizontal(|ui| {
-                    ui.label("N Correct");
-                    ui.add(egui::Slider::new(&mut self.config.n_correct, 1..=20).text(""));
-                });
-                ui.horizontal(|ui| {
-                    ui.label("M Wrong");
-                    ui.add(egui::Slider::new(&mut self.config.m_wrong, 1..=20).text(""));
-                });
-            }
-            if self.config.rule_option == RuleOption::Freeze {
-                ui.horizontal(|ui| {
-                    ui.label("N Correct");
-                    ui.add(egui::Slider::new(&mut self.config.n_correct, 1..=20).text(""));
-                });
-            }
-
-            ui.separator();
-
-            if ui.button("Load Data and Begin").clicked() {
-                let players = load_players(&self.config.players_csv);
-                let questions = load_questions(&self.config.questions_csv);
-                match (players, questions) {
-                    (Ok(p), Ok(q)) => {
-                        if let Err(e) = write_log_head(&self.config.log_csv, &p) {
+                    if ui.button("Begin Quiz").clicked() {
+                        let players = self.loaded_players.clone();
+                        let questions = match load_questions(&self.config.questions_csv) {
+                            Ok(q) => q,
+                            Err(e) => {
+                                self.config_message = format!("問題読み込みエラー: {}", e);
+                                return;
+                            }
+                        };
+                        if let Err(e) = write_log_head(&self.config.log_csv, &players) {
                             self.config_message = format!("CSV読み込み成功、ただしログヘッダー書き込み失敗: {}", e);
                         } else {
-                            self.config_message = "CSV読み込み成功。ラウンドを開始します。".into();
+                            self.config_message = "クイズ開始".into();
                         }
-                        self.apply_config_to_state(p, q);
+                        self.apply_config_to_state(players, questions);
                         self.is_config_mode = false;
                     }
-                    (Err(e), _) => {
-                        self.config_message = format!("プレイヤー読み込みエラー: {}", e);
+                });
+            } else {
+                ui.heading("Quiz Startup Configuration");
+
+                ui.separator();
+
+                ui.horizontal(|ui| {
+                    ui.label("Round name");
+                    ui.text_edit_singleline(&mut self.config.round_name);
+                });
+
+                ui.separator();
+
+                ui.horizontal(|ui| {
+                    ui.label("Players CSV");
+                    ui.text_edit_singleline(&mut self.config.players_csv);
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Questions CSV");
+                    ui.text_edit_singleline(&mut self.config.questions_csv);
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Log CSV");
+                    ui.text_edit_singleline(&mut self.config.log_csv);
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Next Round Players CSV");
+                    ui.text_edit_singleline(&mut self.config.next_round_player_csv);
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Advance Count");
+                    ui.add(egui::DragValue::new(&mut self.config.next_round_advance_count).clamp_range(1..=100));
+                });
+
+                ui.separator();
+
+                ui.label("Rule option");
+                ui.horizontal( |ui| {
+                    for &rule in RuleOption::all_options() {
+                        if ui
+                            .selectable_label(self.config.rule_option == rule, rule.label())
+                            .clicked()
+                        {
+                            self.config.rule_option = rule;
+                        }
                     }
-                    (_, Err(e)) => {
-                        self.config_message = format!("問題読み込みエラー: {}", e);
+                });
+
+                if
+                    self.config.rule_option == RuleOption::NCorrectMWrong ||
+                    self.config.rule_option == RuleOption::UpDown ||
+                    self.config.rule_option == RuleOption::NByM ||
+                    self.config.rule_option == RuleOption::RenDatsuNCorrectMWrong
+                {
+                    ui.horizontal(|ui| {
+                        ui.label("N Correct");
+                        ui.add(egui::Slider::new(&mut self.config.n_correct, 1..=20).text(""));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("M Wrong");
+                        ui.add(egui::Slider::new(&mut self.config.m_wrong, 1..=20).text(""));
+                    });
+                }
+                if self.config.rule_option == RuleOption::Freeze {
+                    ui.horizontal(|ui| {
+                        ui.label("N Correct");
+                        ui.add(egui::Slider::new(&mut self.config.n_correct, 1..=20).text(""));
+                    });
+                }
+
+                ui.separator();
+
+                if ui.button("Load Data").clicked() {
+                    match load_players(&self.config.players_csv) {
+                        Ok(p) => {
+                            self.loaded_players = p;
+                            self.config.initial_player_states.clear();
+                            self.show_player_setup = true;
+                            self.config_message = "プレイヤー読み込み成功。初期値を設定してください。".into();
+                        }
+                        Err(e) => {
+                            self.config_message = format!("プレイヤー読み込みエラー: {}", e);
+                        }
                     }
                 }
+
+                if ui.button("Load Data and Begin (No Setup)").clicked() {
+                    let players = match load_players(&self.config.players_csv) {
+                        Ok(p) => p,
+                        Err(e) => {
+                            self.config_message = format!("プレイヤー読み込みエラー: {}", e);
+                            return;
+                        }
+                    };
+                    let questions = match load_questions(&self.config.questions_csv) {
+                        Ok(q) => q,
+                        Err(e) => {
+                            self.config_message = format!("問題読み込みエラー: {}", e);
+                            return;
+                        }
+                    };
+                    if let Err(e) = write_log_head(&self.config.log_csv, &players) {
+                        self.config_message = format!("CSV読み込み成功、ただしログヘッダー書き込み失敗: {}", e);
+                    } else {
+                        self.config_message = "CSV読み込み成功。ラウンドを開始します。".into();
+                    }
+                    self.apply_config_to_state(players, questions);
+                    self.is_config_mode = false;
+                }
+
+                if ui.button("Reset to defaults").clicked() {
+                    self.config = AppConfig::default();
+                    self.config_message = "デフォルト設定にリセットしました。".into();
+                }
+
+                ui.separator();
+
+                ui.label(egui::RichText::new(&self.config_message));
             }
-
-            if ui.button("Reset to defaults").clicked() {
-                self.config = AppConfig::default();
-                self.config_message = "デフォルト設定にリセットしました。".into();
-            }
-
-            ui.separator();
-
-            ui.label(egui::RichText::new(&self.config_message));
         });
     }
 
