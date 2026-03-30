@@ -165,8 +165,6 @@ impl QuizRule for NByM {
         player_events: &mut HashMap<PlayerId, Vec<Event>>,
         _question_status: &mut QuestionStatus,
     ) {
-        let lim = self.n.saturating_mul(self.m);
-
         for (player_id, events) in player_events.iter() {
             let mut correct_delta = 0;
             let mut wrong_delta = 0;
@@ -188,19 +186,14 @@ impl QuizRule for NByM {
                 .entry(*player_id)
                 .or_insert_with(PlayerStatus::new);
 
-            // 初期化: correct=0, wrong=m
-            if status.correct_count == 0 && status.wrong_count == 0 {
-                status.wrong_count = self.m;
-            }
+            status.correct_count += correct_delta;
+            status.wrong_count += wrong_delta;
+            status.score = status.correct_count as i32 * (self.m - status.wrong_count) as i32;
 
-            status.correct_count = status.correct_count.saturating_add(correct_delta as u32);
-            status.wrong_count = status.wrong_count.saturating_sub(wrong_delta as u32);
-            status.score += correct_delta as i32;
-
-            if status.correct_count.saturating_mul(status.wrong_count) >= lim {
+            if status.score >= self.n as i32 * self.m as i32 {
                 status.is_winner = true;
             }
-            if status.wrong_count == 0 {
+            if status.wrong_count >= self.m {
                 status.is_eliminated = true;
             }
         }
@@ -246,9 +239,10 @@ impl QuizRule for UpDown {
             let status = player_statuses
                 .entry(*player_id)
                 .or_insert_with(PlayerStatus::new);
-            if wrong_count > 0 { status.score = 0; }
             status.correct_count += correct_count as u32;
             status.wrong_count += wrong_count as u32;
+            status.score += correct_count;
+            if wrong_count > 0 { status.score = 0; }
             if status.correct_count >= self.n as u32 {
                 status.is_winner = true;
             }

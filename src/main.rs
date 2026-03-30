@@ -12,6 +12,7 @@ use crate::data::{Player, Question, PlayerStatus, QuestionStatus, Event, SharedQ
 use crate::loader::{load_players, load_questions, write_log_head, write_log_line};
 use crate::terminal::{read_line, show_prompt, display_players, display_question, display_scores, 
                      handle_set_command, handle_answer_command};
+use crate::rules::apply_selected_rule;
 
 fn main() -> eframe::Result<()> {
     // GUI起動前に設定画面でパス・ルールを選択してから読み込む
@@ -39,7 +40,6 @@ fn run_terminal_loop(
     players: Vec<Player>,
     questions: Vec<Question>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use crate::rules::apply_selected_rule;
     let question_num = questions.len();
 
     let mut player_statuses: HashMap<PlayerId, PlayerStatus> = HashMap::new();
@@ -257,10 +257,41 @@ impl ScoreboardApp {
         data.questions = questions;
         data.display_statuses = display_statuses.clone();
         data.working_statuses = display_statuses;
+        data.player_events = HashMap::new();
+        data.question_status = QuestionStatus::new();
         data.current_question = 0;
         data.rule_option = self.config.rule_option;
         data.n_correct = self.config.n_correct;
         data.m_wrong = self.config.m_wrong;
+    }
+
+    fn apply_pending_events(&self, data: &mut SharedQuizState) {
+        // Initiate from last committed display state
+        data.working_statuses = data.display_statuses.clone();
+
+        // Apply rule over all collected events in the current question
+        apply_selected_rule(
+            &data.rule_option,
+            data.n_correct,
+            data.m_wrong,
+            &mut data.working_statuses,
+            &mut data.player_events,
+            &mut data.question_status,
+        );
+    }
+
+    fn recompute_working_statuses(&self, data: &mut SharedQuizState) {
+        data.working_statuses = data.display_statuses.clone();
+        let mut q_status = QuestionStatus::new();
+        apply_selected_rule(
+            &data.rule_option,
+            data.n_correct,
+            data.m_wrong,
+            &mut data.working_statuses,
+            &mut data.player_events,
+            &mut q_status,
+        );
+        data.question_status = q_status;
     }
 
     fn render_config_ui(&mut self, ctx: &egui::Context) {
@@ -820,8 +851,23 @@ impl eframe::App for ScoreboardApp {
                         // 問題進行
                         ui.horizontal(|ui| {
                             if ui.button("Next Question").clicked() {
+                                // 問題確定: 現在の暫定ステータスを表示用に確定
                                 data.display_statuses = data.working_statuses.clone();
+
+                                // 凍結カウントダウン
+                                for status in data.display_statuses.values_mut() {
+                                    if status.freeze_count > 0 {
+                                        status.freeze_count -= 1;
+                                    }
+                                }
+
+                                // 次の問題へ移行
                                 data.current_question += 1;
+
+                                // 新しい問題に向けてイベント・状態リセット
+                                data.player_events.clear();
+                                data.question_status = QuestionStatus::new();
+                                data.working_statuses = data.display_statuses.clone();
                             }
                         });
 
@@ -835,21 +881,27 @@ impl eframe::App for ScoreboardApp {
                         egui::Grid::new("answer_grid").striped(true).show(ui, |ui| {
                             for (pid, name) in &player_info {
                                 ui.label(format!("{}: {}", pid, name));
-                                if ui.button(egui::RichText::new("Correct").color(egui::Color32::GREEN)).clicked() {
-                                    if let Some(status) = data.working_statuses.get_mut(pid) {
-                                        status.score += 1;
-                                        status.correct_count += 1;
-                                    }
+
+                                let is_disabled = data.question_status.finished
+                                    || data.working_statuses.get(pid).map_or(false, |s| s.freeze_count > 0);
+
+                                if ui.add_enabled(!is_disabled, egui::Button::new(egui::RichText::new("Correct").color(egui::Color32::GREEN))).clicked() {
+                                    data.player_events.entry(*pid).or_default().push(Event::Correct);
+                                    data.question_status.finished = true;
+                                    self.apply_pending_events(&mut data);
                                 }
-                                if ui.button(egui::RichText::new("Wrong").color(egui::Color32::RED)).clicked() {
-                                    if let Some(status) = data.working_statuses.get_mut(pid) {
-                                        status.wrong_count += 1;
-                                    }
+
+                                if ui.add_enabled(!is_disabled, egui::Button::new(egui::RichText::new("Wrong").color(egui::Color32::RED))).clicked() {
+                                    data.player_events.entry(*pid).or_default().push(Event::Wrong);
+                                    self.apply_pending_events(&mut data);
                                 }
-                                if ui.button(egui::RichText::new("Buzz").color(egui::Color32::DARK_GRAY)).clicked() {
-                                    if let Some(status) = data.working_statuses.get_mut(pid) {
-                                    }
+
+                                if ui.add_enabled(!is_disabled, egui::Button::new(egui::RichText::new("Buzz").color(egui::Color32::DARK_GRAY))).clicked() {
+                                    let next_buzz = data.player_events.values().flat_map(|es| es.iter()).filter(|e| matches!(e, Event::Buzz(_))).count() as u32 + 1;
+                                    data.player_events.entry(*pid).or_default().push(Event::Buzz(next_buzz));
+                                    self.apply_pending_events(&mut data);
                                 }
+
                                 ui.end_row();
                             }
                         });
