@@ -39,7 +39,6 @@ pub struct Question {
     #[allow(dead_code)]
     pub id: usize,
     pub text: String,
-    #[allow(dead_code)]
     pub answer: String,
 }
 
@@ -68,7 +67,6 @@ pub struct PlayerStatus {
     pub correct_count: u32,
     pub wrong_count: u32,
     pub freeze_count: u32,
-    #[allow(dead_code)]
     pub frozen_until: Option<u32>,
     pub is_winner: bool,
     pub is_eliminated: bool,
@@ -98,14 +96,12 @@ impl Default for PlayerStatus {
 
 // --- 各問題の状態 ---
 #[derive(Clone, Debug)]
-#[allow(dead_code)]
 pub struct QuestionStatus {
     pub finished: bool,
     pub locked: HashSet<PlayerId>,
 }
 
 impl QuestionStatus {
-    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             finished: false,
@@ -122,7 +118,6 @@ impl Default for QuestionStatus {
 
 // --- イベント（ラウンド中に入力される） ---
 #[derive(Clone, Debug, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum Event {
     Buzz(u32),  // 解答権を獲得した順番
     Correct,

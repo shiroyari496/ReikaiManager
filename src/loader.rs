@@ -39,7 +39,6 @@ pub fn load_questions(path: &str) -> Result<Vec<Question>> {
 }
 
 /// ログファイルのヘッダーを書き込む
-#[allow(dead_code)]
 pub fn write_log_head(path: &str, players: &[Player]) -> Result<()> {
     let mut wtr = csv::Writer::from_path(path)?;
 
@@ -72,7 +71,6 @@ pub fn write_log_head(path: &str, players: &[Player]) -> Result<()> {
 }
 
 /// ログファイルに1行書き込む
-#[allow(dead_code)]
 pub fn write_log_line(
     path: &str,
     problem_id: usize,
