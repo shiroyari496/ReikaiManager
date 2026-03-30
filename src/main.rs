@@ -33,7 +33,7 @@ fn main() -> eframe::Result<()> {
     )
 }
 
-// ターミナルでの操作 削除予定
+// ターミナルでの操作
 #[allow(dead_code)]
 fn run_terminal_loop(
     state: Arc<Mutex<SharedQuizState>>,
@@ -705,6 +705,19 @@ impl ScoreboardApp {
     }
 }
 
+fn wrap_text(text: &str, width: usize) -> String {
+    text.chars()
+        .enumerate()
+        .flat_map(|(i, c)| {
+            if i != 0 && i % width == 0 {
+                vec!['\n', c]
+            } else {
+                vec![c]
+            }
+        })
+        .collect()
+}
+
 impl eframe::App for ScoreboardApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // F11 キーで全画面の切り替え
@@ -728,9 +741,9 @@ impl eframe::App for ScoreboardApp {
 
         // メイン画面用の問題文 (indexが1以上なら「前回」を表示)
         let display_q_text = if current_question > 0 && current_question <= questions.len() {
-            &questions[current_question - 1].text
+            wrap_text(&questions[current_question - 1].text, 50)
         } else {
-            "Waiting for Quiz to start..."
+            "Waiting for Quiz to start...".to_string()
         };
         let display_a_text = if current_question > 0 && current_question <= questions.len() {
             &questions[current_question - 1].answer
@@ -878,53 +891,60 @@ impl eframe::App for ScoreboardApp {
                 );
 
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    let state_arc = self.state.clone(); 
-                    let mut data = state_arc.lock().unwrap();
-                    ui.heading("Quiz Monitor");
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        let state_arc = self.state.clone(); 
+                        let mut data = state_arc.lock().unwrap();
+                        ui.heading("Quiz Monitor");
 
-                    ui.group(|ui| {
-                        ui.set_width(ui.available_width());
-                        // ディスプレイに映っているもの（前回分）
-                        ui.label(egui::RichText::new("ON SCREEN (Previous):").color(egui::Color32::GOLD));
-                        let prev_text = if data.current_question > 0 && (data.current_question as usize) <= data.questions.len() {
-                            &data.questions[data.current_question as usize - 1].text.clone()
-                        } else {
-                            "-"
-                        };
-                        ui.label(prev_text);
+                        ui.group(|ui| {
+                            ui.set_width(ui.available_width());
+                            // ディスプレイに映っているもの（前回分）
+                            ui.label(egui::RichText::new("ON SCREEN (Previous):").color(egui::Color32::GOLD));
+                            let prev_text = if data.current_question > 0 && (data.current_question as usize) <= data.questions.len() {
+                                &data.questions[data.current_question as usize - 1].text.clone()
+                            } else {
+                                "-"
+                            };
+                            ui.label(prev_text);
 
+                            ui.separator();
+
+                            // これから出すもの（今回分）
+                            ui.label(egui::RichText::new("NEXT UP (Current):").color(egui::Color32::LIGHT_BLUE));
+                            let curr_idx = data.current_question as usize;
+                            if curr_idx < data.questions.len() {
+                                let curr_text = data.questions[curr_idx].text.clone(); 
+                                ui.label(egui::RichText::new(curr_text).size(18.0).strong());
+                            } else {
+                                ui.label("No more questions.");
+                            }
+
+                            if data.round_completed {
+                                ui.separator();
+                                ui.label(egui::RichText::new("Round completed: next round players exported.").color(egui::Color32::GREEN));
+                            }
+                        });
+
+                        ui.add_space(10.0);
+                        ui.heading("Controller");
                         ui.separator();
 
-                        // これから出すもの（今回分）
-                        ui.label(egui::RichText::new("NEXT UP (Current):").color(egui::Color32::LIGHT_BLUE));
-                        let curr_idx = data.current_question as usize;
-                        if curr_idx < data.questions.len() {
-                            let curr_text = data.questions[curr_idx].text.clone(); 
-                            ui.label(egui::RichText::new(curr_text).size(18.0).strong());
-                        } else {
-                            ui.label("No more questions.");
-                        }
-
-                        if data.round_completed {
-                            ui.separator();
-                            ui.label(egui::RichText::new("Round completed: next round players exported.").color(egui::Color32::GREEN));
-                        }
-                    });
-
-                    ui.add_space(10.0);
-                    ui.heading("Controller");
-                    ui.separator();
-
-                    egui::ScrollArea::vertical().show(ui, |ui| {
                         // 問題進行
                         ui.horizontal(|ui| {
                             if ui.button("Next Question").clicked() {
                                 if data.round_completed {
                                     // すでに最終問題完了後
-                                } else if data.current_question as usize >= data.questions.len() {
+                                } else if data.current_question as usize + 1 >= data.questions.len() {
                                     // 最終問題の後、完了状態にする
                                     self.export_next_round_players(&mut data);
                                 } else {
+                                    // ログ出力
+                                    if let Err(e) = write_log_line(&self.config.log_csv, data.current_question as usize, &players, &data.player_events) {
+                                        ui.label(format!("ログ書き込み失敗: {}", e));
+                                    } else {
+                                        ui.label(format!("ログ書き込み成功"));
+                                    };
+
                                     // 問題確定: 現在の暫定ステータスを表示用に確定
                                     data.display_statuses = data.working_statuses.clone();
 

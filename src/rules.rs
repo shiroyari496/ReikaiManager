@@ -345,7 +345,7 @@ impl QuizRule for SpecialBy {
             status.correct_count += corrects;
             status.wrong_count += wrongs;
             if wrongs > 0 {
-                status.freeze_count = 1;
+                status.freeze_count = 1 + 1;
             }
 
             // x/y 計算は apply_selected_rule直前渡しの current_question が必要
@@ -447,12 +447,13 @@ pub fn apply_selected_rule(
                     .or_insert_with(PlayerStatus::new);
 
                 if events.iter().any(|e| matches!(e, Event::Correct)) {
-                    if (1..=20).contains(&current_question) || (41..=60).contains(&current_question) {
+                    if (0..=19).contains(&current_question) || (40..=59).contains(&current_question) {
                         status.x += 1;
-                    } else if (21..=40).contains(&current_question) {
+                    } else if (20..=39).contains(&current_question) {
                         status.y += 1;
                     }
                 }
+                status.score = status.x as i32 * status.y as i32;
             }
         }
     }
