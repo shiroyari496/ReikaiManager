@@ -703,6 +703,148 @@ impl ScoreboardApp {
             }
         }
     }
+
+    /// SpecialBy専用のプレイヤー情報カード描画（横書き）
+    /// 枠内の上段左側が所属、上段右側が学年、下側が名前
+    fn ui_3d_player_info_card_special_by(
+        &self,
+        ui: &mut egui::Ui,
+        name: &str,
+        affiliation: Option<&str>,
+        grade: Option<&str>,
+        name_font_size: f32,
+        small_font_size: f32,
+        size: egui::Vec2,
+        color: egui::Color32,
+        marker_size: f32,
+        marker_color: egui::Color32,
+        change_time: Option<std::time::Instant>
+    ) {
+        let t = change_time.map_or(0.0, |inst| {
+            let elapsed = inst.elapsed().as_secs_f32();
+            // 0.8秒で180度回転する
+            (elapsed.min(0.8) / 0.8 * std::f32::consts::FRAC_PI_2).sin()
+        });
+
+        let angle = t * std::f32::consts::PI;
+        let cos_a = angle.cos();
+        let sin_a = angle.sin();
+
+        let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+        let painter = ui.painter();
+        let center = rect.center();
+
+        // パースの強さ（0.0～0.3程度が自然）
+        let perspective_factor = 0.2 * sin_a.abs();
+
+        let width_scale = cos_a.abs().max(0.01);
+        let hw = size.x / 2.0 * width_scale;
+        let hh = size.y / 2.0;
+
+        // 左右のパース計算
+        let side_sign = if cos_a >= 0.0 { 1.0 } else { -1.0 };
+        let left_h_scale  = 1.0 + (perspective_factor * if cos_a >= 0.0 { -1.0 } else { 1.0 });
+        let right_h_scale = 1.0 + (perspective_factor * if cos_a >= 0.0 { 1.0 } else { -1.0 });
+
+        let p1 = egui::pos2(center.x - hw, center.y - hh * left_h_scale); // 左上
+        let p2 = egui::pos2(center.x + hw, center.y - hh * right_h_scale); // 右上
+        let p3 = egui::pos2(center.x + hw, center.y + hh * right_h_scale); // 右下
+        let p4 = egui::pos2(center.x - hw, center.y + hh * left_h_scale); // 左下
+
+         // --- 1. 厚みの描画 ---
+        if cos_a.abs() < 0.98 {
+            let thickness_val = 10.0 * sin_a.abs() * side_sign;
+            let side_color = color.linear_multiply(0.4); // 側面は暗く
+
+            // カードの端(p2-p3 または p1-p4)から厚み分ずらしたポリゴンを描画
+            let (top, bot) = if cos_a >= 0.0 { (p2, p3) } else { (p1, p4) };
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    top,
+                    egui::pos2(top.x + thickness_val, top.y),
+                    egui::pos2(bot.x + thickness_val, bot.y),
+                    bot,
+                ],
+                side_color,
+                egui::Stroke::NONE,
+            ));
+        }
+
+        // --- 2. メインの板の描画 ---
+        let light_factor = 0.7 + 0.3 * cos_a.abs();
+        let current_color = color.linear_multiply(light_factor);
+
+        painter.add(egui::Shape::convex_polygon(
+            vec![p1, p2, p3, p4],
+            current_color,
+            egui::Stroke::new(1.0, egui::Color32::WHITE),
+        ));
+
+        // --- 3. 四隅マーカーの描画 ---
+        let marker_horiz = (marker_size / 2.0) * cos_a.abs().max(0.05); // 角度に合わせて横方向に圧縮
+        let marker_vert = marker_size / 2.0;
+
+        for &c in &[p1, p2, p3, p4] {
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    egui::pos2(c.x - marker_horiz, c.y - marker_vert),
+                    egui::pos2(c.x + marker_horiz, c.y - marker_vert),
+                    egui::pos2(c.x + marker_horiz, c.y + marker_vert),
+                    egui::pos2(c.x - marker_horiz, c.y + marker_vert),
+                ],
+                marker_color,
+                egui::Stroke::new(1.0, egui::Color32::WHITE),
+            ));
+        }
+
+        // 4. テキスト描画（横書き）
+        if cos_a.abs() > 0.3 {
+            let visibility = cos_a.abs();
+            let alpha = (visibility * 255.0) as u8;
+            let text_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha);
+
+            let char_height_name = name_font_size * visibility;
+            let char_height_small = small_font_size * visibility;
+
+            // 上段: 所属（左）と学年（右）
+            let top_y = center.y - hh * 0.3;
+            let bottom_y = center.y + hh * 0.2;
+
+            // 所属（上段左）
+            if let Some(aff_str) = affiliation {
+                let pos = egui::pos2(center.x - hw * 0.4, top_y);
+                painter.text(
+                    pos,
+                    egui::Align2::CENTER_CENTER,
+                    aff_str,
+                    egui::FontId::proportional(char_height_small),
+                    text_color,
+                );
+            }
+
+            // 学年（上段右）
+            if let Some(grade_str) = grade {
+                let pos = egui::pos2(center.x + hw * 0.4, top_y);
+                painter.text(
+                    pos,
+                    egui::Align2::CENTER_CENTER,
+                    grade_str,
+                    egui::FontId::proportional(char_height_small),
+                    text_color,
+                );
+            }
+
+            // 下段: 名前（中央）
+            let pos = egui::pos2(center.x, bottom_y);
+            painter.text(
+                pos,
+                egui::Align2::CENTER_CENTER,
+                name,
+                egui::FontId::proportional(char_height_name),
+                text_color,
+            );
+        }
+    }
 }
 
 fn wrap_text(text: &str, width: usize) -> String {
@@ -710,7 +852,7 @@ fn wrap_text(text: &str, width: usize) -> String {
         .enumerate()
         .flat_map(|(i, c)| {
             if i != 0 && i % width == 0 {
-                vec!['\n', c]
+                vec!['\n', ' ', ' ', ' ', ' ', ' ', c]
             } else {
                 vec![c]
             }
@@ -734,9 +876,9 @@ impl eframe::App for ScoreboardApp {
         }
 
         // 共有データの取得
-        let (current_question, questions, players, display_statuses) = {
+        let (current_question, questions, players, display_statuses, rule_option) = {
             let data = self.state.lock().unwrap();
-            (data.current_question as usize, data.questions.clone(), data.players.clone(), data.display_statuses.clone())
+            (data.current_question as usize, data.questions.clone(), data.players.clone(), data.display_statuses.clone(), data.rule_option)
         };
 
         // メイン画面用の問題文 (indexが1以上なら「前回」を表示)
@@ -778,8 +920,9 @@ impl eframe::App for ScoreboardApp {
                 // --- 問題文 ---
                 ui.vertical_centered(|ui| {
                     let panel_width = ui.available_width() - 40.0;
+                    let question_height = if rule_option == RuleOption::SpecialBy { 300.0 } else { 150.0 };
                     let q_label = format!("Q{}: {}", current_question, display_q_text);
-                    self.ui_3d_card(ui, &q_label, 22.0, egui::vec2(panel_width, 150.0), egui::Color32::from_rgb(40, 40, 50), 16.0, egui::Color32::from_rgb(0, 240, 240), None);
+                    self.ui_3d_card(ui, &q_label, 22.0, egui::vec2(panel_width, question_height), egui::Color32::from_rgb(40, 40, 50), 16.0, egui::Color32::from_rgb(0, 240, 240), None);
                 });
                 // --- 答え ---
                 ui.vertical_centered(|ui| {
@@ -821,7 +964,11 @@ impl eframe::App for ScoreboardApp {
                                 } else {
                                     egui::Color32::from_rgb(60, 60, 80)
                                 };
-                                self.ui_3d_player_info_card(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), 40.0, 20.0, egui::vec2(tile_width, 350.0), name_card_color, 0.0, egui::Color32::from_rgb(240, 240, 0), None);
+                                if rule_option == RuleOption::SpecialBy {
+                                    self.ui_3d_player_info_card_special_by(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), 30.0, 18.0, egui::vec2(tile_width, 170.0), name_card_color, 0.0, egui::Color32::from_rgb(240, 240, 0), None);
+                                } else {
+                                    self.ui_3d_player_info_card(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), 40.0, 20.0, egui::vec2(tile_width, 350.0), name_card_color, 0.0, egui::Color32::from_rgb(240, 240, 0), None);
+                                }
                             }
                             ui.end_row();
 
@@ -854,6 +1001,29 @@ impl eframe::App for ScoreboardApp {
                                 self.ui_3d_card(ui, &score_str, font_size, egui::vec2(tile_width, 60.0), egui::Color32::from_rgb(40, 80, 120), 8.0, egui::Color32::from_rgb(240, 240, 0), change);
                             }
                             ui.end_row();
+
+                            // --- SpecialByの場合、x値とy値を横並びに配置 ---
+                            if rule_option == RuleOption::SpecialBy {
+                                for p in &players {
+                                    // 1つのセルの中で水平に並べる
+                                    ui.horizontal(|ui| {
+                                        let spacing_between_cw = spacing_x / 2.0;
+                                        ui.spacing_mut().item_spacing.x = spacing_between_cw;
+
+                                        let status = &display_statuses[&p.id];
+                                        let x_str = format!("x:{}", status.x);
+                                        let y_str = format!("y:{}", status.y);
+
+                                        let half_size = egui::vec2((tile_width-spacing_between_cw)/2.0, 30.0);
+
+                                        // x値
+                                        self.ui_3d_card(ui, &x_str, 25.0, half_size, egui::Color32::from_rgb(100, 60, 120), 0.0, egui::Color32::from_rgb(240, 240, 0), None);
+                                        // y値
+                                        self.ui_3d_card(ui, &y_str, 25.0, half_size, egui::Color32::from_rgb(120, 100, 60), 0.0, egui::Color32::from_rgb(240, 240, 0), None);
+                                    });
+                                }
+                                ui.end_row();
+                            }
 
                             // --- 正答数と誤答数を横並びに配置 ---
                             for p in &players {
