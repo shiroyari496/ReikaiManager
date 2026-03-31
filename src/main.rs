@@ -999,7 +999,7 @@ impl eframe::App for ScoreboardApp {
                 // --- 問題文 ---
                 ui.vertical_centered(|ui| {
                     let panel_width = ui.available_width() - 40.0;
-                    let question_height = if rule_option == RuleOption::SpecialBy { 300.0 } else { 150.0 };
+                    let question_height = if rule_option == RuleOption::SpecialBy { 300.0 } else { 222.0 };
                     let q_label = format!("Q{}: {}", current_question, display_q_text);
                     self.ui_3d_card(ui, &q_label, 22.0, egui::vec2(panel_width, question_height), egui::Color32::from_rgb(40, 40, 50), 16.0, egui::Color32::from_rgb(0, 240, 240), None);
                 });
@@ -1046,7 +1046,7 @@ impl eframe::App for ScoreboardApp {
                                 if rule_option == RuleOption::SpecialBy {
                                     self.ui_3d_player_info_card_special_by(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), 30.0, 18.0, egui::vec2(tile_width, 170.0), name_card_color, 0.0, egui::Color32::from_rgb(240, 240, 0), None);
                                 } else {
-                                    self.ui_3d_player_info_card(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), 40.0, 20.0, egui::vec2(tile_width, 350.0), name_card_color, 0.0, egui::Color32::from_rgb(240, 240, 0), None);
+                                    self.ui_3d_player_info_card(ui, &p.name, p.affiliation.as_deref(), p.grade.as_deref(), 40.0, 20.0, egui::vec2(tile_width, 300.0), name_card_color, 0.0, egui::Color32::from_rgb(240, 240, 0), None);
                                 }
                             }
                             ui.end_row();
